@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Review Catalog - 検索</title>
+  <meta name="description" content="作品検索ページです。" />
+
+  
+    <link rel="stylesheet" href="../assets/style.css">
+  
+
+  <style>
+        :root{color-scheme:dark;}
+/* 検索ページ専用：共通CSS（docs/assets/style.css）のダークテーマに合わせる */
+    .controls{margin:14px 0 16px; display:grid; gap:10px;}
+    .controls .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    .controls input[type="search"], .controls select{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      color-scheme:dark;
+      min-width:220px;
+      outline:none;
+    }
+    .controls input[type="search"]::placeholder{color:rgba(148,163,184,.9)}
+    .controls button{
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:800;
+    }
+    .controls button:hover{border-color:rgba(96,165,250,.55)}
+    .controls select option, .controls select optgroup{
+      background:#0b1220;
+      color:var(--text);
+    }
+
+    .count{color:var(--muted); font-size:14px; margin-left:auto;}
+
+    .hint{color:var(--muted); font-size:13px;}
+    .pill{display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(255,255,255,.04);}
+
+    .top-tags{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0;}
+    .top-tags button{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      border-radius:999px;
+      padding:6px 10px;
+      cursor:pointer;
+      font-size:12px;
+      font-weight:800;
+    }
+    .top-tags button:hover{border-color:rgba(96,165,250,.55)}
+    .top-tags button.active{
+      border-color:rgba(96,165,250,.75);
+      background:rgba(96,165,250,.22);
+      color:#dbeafe;
+    }
+
+    .selected-tags{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+    .tag-chip{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(96,165,250,.4);
+      background:rgba(96,165,250,.12);
+      color:#dbeafe;
+      font-size:12px;
+      font-weight:800;
+    }
+    .tag-chip .x{
+      width:18px; height:18px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.08);
+      color:var(--text);
+      display:inline-flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      line-height:1;
+    }
+    .tag-chip .x:hover{border-color:rgba(255,255,255,.32)}
+
+    .loadmore-wrap{display:flex; justify-content:center; margin:14px 0 24px;}
+    .status{color:var(--muted); font-size:13px; margin-top:6px;}
+    .sentinel{height:1px;}
+  </style>
+
+  <meta name="robots" content="noindex,follow" />
+  <link rel="canonical" href="https://review-list.github.io/TEST/search/" />
+  <meta property="og:site_name" content="Review Catalog" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Review Catalog - 検索" />
+  <meta property="og:description" content="作品検索ページです。" />
+  <meta property="og:url" content="https://review-list.github.io/TEST/search/" />
+    <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Review Catalog - 検索" />
+  <meta name="twitter:description" content="作品検索ページです。" />
+  </head>
+
+<body>
+  <!-- 共通CSS（.header/.header-inner/.nav）に合わせて検索ページも統一 -->
+  <header class="header">
+    <div class="container header-inner">
+      <div class="brand">
+        <a href="../"><strong>Review Catalog</strong></a>
+      </div>
+      <nav class="nav">
+        <a href="../">ホーム</a>
+        <a href="../actresses/">女優</a>
+        <a href="../genres/">ジャンル</a>
+        <a href="./">検索</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <h1 style="margin:16px 0 8px;">検索</h1>
+
+    <section class="controls" aria-label="検索と絞り込み">
+      <div class="row">
+        <input id="q" type="search" placeholder="タイトル / 女優 / タグで検索" autocomplete="off">
+
+        <select id="actress">
+          <option value="">女優（すべて）</option>
+        </select>
+
+        <select id="sort">
+          <option value="new">新着順</option>
+          <option value="old">古い順</option>
+          <option value="title">タイトル順</option>
+        </select>
+
+        <select id="mode">
+          <option value="or">タグ OR（どれか含む）</option>
+          <option value="and">タグ AND（全部含む）</option>
+        </select>
+
+        <button id="reset" type="button">リセット</button>
+
+        <div class="count">
+          <span id="shown">0</span> / <span id="total">0</span> 件
+        </div>
+      </div>
+
+      <div class="row" style="align-items:flex-start;">
+        <div>
+          <div class="pill">人気タグ（クリックでON/OFF）</div>
+          <div class="top-tags" id="topTags"></div>
+          <div class="selected-tags" id="selectedTags" aria-label="選択中タグ"></div>
+          <div class="status" id="loadStatus"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="pill">タグ追加（Enterで追加 / ×で解除）</div>
+        <input id="tagInput" type="search" placeholder="タグ名を入力" list="tagOptions" autocomplete="off">
+        <datalist id="tagOptions"></datalist>
+        <div class="hint">
+          状態はURLに保存されます（共有できます）<br>
+          ※大量時は分割JSONを順次読み込みながら検索します
+        </div>
+      </div>
+    </section>
+
+    <section class="grid" id="results"></section>
+
+    <div class="loadmore-wrap">
+      <button id="loadMore" type="button">さらに読み込む</button>
+    </div>
+    <div class="sentinel" id="sentinel"></div>
+
+    <footer class="footer" style="margin:22px 0 30px; color:var(--muted); text-align:center;">
+      © 2026 Review Catalog
+    </footer>
+  </main>
+
+  <script>
+    (function(){
+      // 互換：manifestがなければ単一JSONにフォールバック
+      const MANIFEST_URL = "../assets/works_index_manifest.json";
+      const FALLBACK_DATA_URL = "../assets/works_index.json"; // build.pyのrenderが渡してるURL（例: ../assets/works_index.json）
+
+      const q = document.getElementById("q");
+      const actress = document.getElementById("actress");
+      const tagInput = document.getElementById("tagInput");
+      const tagOptions = document.getElementById("tagOptions");
+      const selectedTagsEl = document.getElementById("selectedTags");
+      const mode = document.getElementById("mode");
+      const sort = document.getElementById("sort");
+      const reset = document.getElementById("reset");
+
+      const results = document.getElementById("results");
+      const shownEl = document.getElementById("shown");
+      const totalEl = document.getElementById("total");
+
+      const topTagsEl = document.getElementById("topTags");
+      const loadStatusEl = document.getElementById("loadStatus");
+
+      const loadMoreBtn = document.getElementById("loadMore");
+      const sentinel = document.getElementById("sentinel");
+
+      const PER_BATCH = 24; // 1回に追加表示する件数（無限スクロールの単位）
+
+      let manifest = null;
+      let all = [];              // 読み込めた分だけ入る（分割なら段階的に増える）
+      let filtered = [];
+      let renderCount = 0;       // 今表示してる件数（filtered先頭から）
+      let loadingChunks = false;
+
+      // タグ候補と選択状態
+      let allTagsList = [];
+      let tagLookup = new Map(); // norm(tag) -> 原文
+      let selectedTags = [];     // 原文の配列（URLにもこれを入れる）
+
+      function norm(s){ return (s||"").toString().trim().toLowerCase(); }
+      function uniqSorted(arr){
+        return Array.from(new Set(arr.filter(Boolean))).sort((a,b)=> a.localeCompare(b, "ja"));
+      }
+      function escapeHtml(s){
+        return (s||"").toString()
+          .replaceAll("&","&amp;")
+          .replaceAll("<","&lt;")
+          .replaceAll(">","&gt;")
+          .replaceAll('"',"&quot;")
+          .replaceAll("'","&#039;");
+      }
+      function getSelectedValues(selectEl){
+        return Array.from(selectEl.selectedOptions).map(o => o.value).filter(Boolean);
+      }
+      function fillSelect(selectEl, values, firstLabel){
+        selectEl.innerHTML = "";
+        if (firstLabel !== null){
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = firstLabel;
+          selectEl.appendChild(opt);
+        }
+        for (const v of values){
+          const opt = document.createElement("option");
+          opt.value = v;
+          opt.textContent = v;
+          selectEl.appendChild(opt);
+        }
+      }
+
+      function setAllTags(values){
+        allTagsList = Array.from(values || []).filter(Boolean);
+        tagLookup = new Map(allTagsList.map(t => [norm(t), t]));
+
+        // datalist を再構築
+        tagOptions.innerHTML = "";
+        for (const t of allTagsList){
+          const opt = document.createElement("option");
+          opt.value = t;
+          tagOptions.appendChild(opt);
+        }
+      }
+
+      function setSelectedTags(next){
+        const uniq = [];
+        const seen = new Set();
+        for (const t of (next || [])){
+          const canon = tagLookup.get(norm(t)) || t;
+          if (!canon) continue;
+          if (seen.has(canon)) continue;
+          seen.add(canon);
+          uniq.push(canon);
+        }
+        selectedTags = uniq;
+        renderSelectedTags();
+        updateTopTagsActiveState();
+      }
+
+      function addTag(tagName){
+        const canon = tagLookup.get(norm(tagName)) || tagName;
+        if (!canon) return;
+        if (selectedTags.includes(canon)) return;
+        selectedTags = [...selectedTags, canon];
+        renderSelectedTags();
+        updateTopTagsActiveState();
+      }
+
+      function removeTag(tagName){
+        selectedTags = selectedTags.filter(t => t !== tagName);
+        renderSelectedTags();
+        updateTopTagsActiveState();
+      }
+
+
+      function toggleTag(tagName){
+        const canon = tagLookup.get(norm(tagName)) || tagName;
+        if (!canon) return;
+        if (selectedTags.includes(canon)){
+          removeTag(canon);
+        }else{
+          addTag(canon);
+        }
+      }
+
+      function renderSelectedTags(){
+        selectedTagsEl.innerHTML = "";
+        if (!selectedTags.length) return;
+        for (const t of selectedTags){
+          const chip = document.createElement("span");
+          chip.className = "tag-chip";
+          chip.innerHTML = `<span>${escapeHtml(t)}</span><span class="x" role="button" aria-label="${escapeHtml(t)} を解除">×</span>`;
+          chip.querySelector(".x").addEventListener("click", () => {
+            removeTag(t);
+            applyFilters({resetRender:true});
+          });
+          selectedTagsEl.appendChild(chip);
+        }
+      }
+
+      function updateTopTagsActiveState(){
+        const set = new Set(selectedTags.map(norm));
+        for (const b of topTagsEl.querySelectorAll("button[data-tag]")){
+          const t = b.getAttribute("data-tag") || "";
+          b.classList.toggle("active", set.has(norm(t)));
+        }
+      }
+
+      // -------------------------
+      // URL state
+      // -------------------------
+      function readStateFromUrl(){
+        const u = new URL(location.href);
+        return {
+          q: u.searchParams.get("q") || "",
+          a: u.searchParams.get("a") || "",
+          tags: (u.searchParams.get("tags") || "").split(",").filter(Boolean),
+          mode: u.searchParams.get("mode") || "or",
+          sort: u.searchParams.get("sort") || "new",
+        };
+      }
+
+      function writeStateToUrl(){
+        const u = new URL(location.href);
+        const st = currentState();
+
+        if (st.q) u.searchParams.set("q", st.q); else u.searchParams.delete("q");
+        if (st.a) u.searchParams.set("a", st.a); else u.searchParams.delete("a");
+        if (st.tags.length) u.searchParams.set("tags", st.tags.join(",")); else u.searchParams.delete("tags");
+        if (st.mode && st.mode !== "or") u.searchParams.set("mode", st.mode); else u.searchParams.delete("mode");
+        if (st.sort && st.sort !== "new") u.searchParams.set("sort", st.sort); else u.searchParams.delete("sort");
+
+        history.replaceState({}, "", u.toString());
+      }
+
+      function applyStateToControls(st){
+        q.value = st.q || "";
+        actress.value = st.a || "";
+        mode.value = st.mode || "or";
+        sort.value = st.sort || "new";
+
+        // tags（URL） -> 選択中タグ
+        setSelectedTags(st.tags || []);
+      }
+
+      function currentState(){
+        return {
+          q: q.value.trim(),
+          a: actress.value,
+          tags: selectedTags,
+          mode: mode.value,
+          sort: sort.value,
+        };
+      }
+
+      // -------------------------
+      // Popular tags
+      // -------------------------
+      function renderTopTags(topTags){
+        topTagsEl.innerHTML = "";
+        (topTags || []).slice(0, 30).forEach(x => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.setAttribute("data-tag", x.name);
+          b.textContent = `${x.name} (${x.count})`;
+          b.addEventListener("click", () => {
+            toggleTag(x.name);
+            tagInput.value = "";
+            applyFilters({resetRender:true});
+          });
+          topTagsEl.appendChild(b);
+        });
+        updateTopTagsActiveState();
+      }
+
+      // -------------------------
+      // Filter & Sort
+      // -------------------------
+      function matchTags(itemTagsLower, selectedLower, modeVal){
+        if (!selectedLower.length) return true;
+        if (modeVal === "and"){
+          return selectedLower.every(t => itemTagsLower.includes(t));
+        }
+        return selectedLower.some(t => itemTagsLower.includes(t));
+      }
+
+      function compareBySort(a, b, sortVal){
+        if (sortVal === "title"){
+          return (a.title||"").localeCompare((b.title||""), "ja");
+        }
+        if (sortVal === "old"){
+          return (a.release_date||"").localeCompare((b.release_date||""), "ja");
+        }
+        return (b.release_date||"").localeCompare((a.release_date||""), "ja");
+      }
+
+      function applyFilters({resetRender=true} = {}){
+        const kw = norm(q.value);
+        const a = norm(actress.value);
+        const selectedLower = selectedTags.map(norm);
+        const modeVal = mode.value;
+        const sortVal = sort.value;
+
+        filtered = all.filter(x => {
+          const title = norm(x.title);
+          const as = norm((x.actresses||[]).join(" "));
+          const tg = norm((x.tags||[]).join(" "));
+
+          const okKw = !kw || title.includes(kw) || as.includes(kw) || tg.includes(kw);
+          const okA  = !a  || as.includes(a);
+          const okT  = matchTags(tg, selectedLower, modeVal);
+
+          return okKw && okA && okT;
+        });
+
+        filtered.sort((x,y)=> compareBySort(x,y,sortVal));
+
+        if (resetRender){
+          renderCount = 0;
+          results.innerHTML = "";
+        }
+
+        writeStateToUrl();
+        updateCounters();
+        renderMore(); // まず1バッチ出す
+      }
+
+      function updateCounters(){
+        totalEl.textContent = manifest?.total_items ? String(manifest.total_items) : String(all.length);
+        shownEl.textContent = String(filtered.length);
+      }
+
+      // -------------------------
+      // Render (infinite)
+      // -------------------------
+      function renderCard(w){
+        const card = document.createElement("article");
+        card.className = "card";
+
+        const detailHref = `../works/${w.id}/`;
+        const img = w.hero_image ? `
+          <a href="${detailHref}" style="display:block; text-decoration:none; color:inherit;">
+            <img class="thumb" src="${w.hero_image}" alt="${escapeHtml(w.title)}" loading="lazy">
+          </a>
+        ` : "";
+        const date = w.release_date ? `<div class="meta">公開日：${escapeHtml(w.release_date)}</div>` : "";
+        const actressesHtml = (w.actresses && w.actresses.length)
+          ? `<div class="tags">${w.actresses.slice(0,6).map(a=>`<span class="tag">${escapeHtml(a)}</span>`).join("")}</div>`
+          : "";
+        const tagsHtml = (w.tags && w.tags.length)
+          ? `<div class="tags">${w.tags.slice(0,8).map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>`
+          : "";
+        const actions = `
+          <div class="actions">
+            <a class="btn secondary" href="${detailHref}">詳細を見る</a>
+            ${w.official_url ? `<a class="btn" href="${w.official_url}" target="_blank" rel="noopener">公式ページを見る</a>` : ""}
+          </div>
+        `;
+
+        card.innerHTML = `
+          ${img}
+          <div class="pad">
+            <div class="title">
+              <a href="${detailHref}" style="color:inherit; text-decoration:none;">
+                ${escapeHtml(w.title)}
+              </a>
+            </div>
+            ${date}
+            ${actressesHtml}
+            ${tagsHtml}
+            ${actions}
+          </div>
+        `;
+        return card;
+      }
+
+      function renderMore(){
+        const next = filtered.slice(renderCount, renderCount + PER_BATCH);
+        for (const w of next){
+          results.appendChild(renderCard(w));
+        }
+        renderCount += next.length;
+
+        // ボタン状態
+        const hasMore = renderCount < filtered.length;
+        loadMoreBtn.disabled = !hasMore;
+        loadMoreBtn.textContent = hasMore ? "さらに読み込む" : "これ以上ありません";
+      }
+
+      // IntersectionObserver で無限スクロール
+      function setupInfiniteScroll(){
+        if (!("IntersectionObserver" in window)) return;
+
+        const io = new IntersectionObserver(entries => {
+          const e = entries[0];
+          if (e.isIntersecting){
+            // まだ表示できるなら追加
+            if (renderCount < filtered.length){
+              renderMore();
+            }
+          }
+        }, {rootMargin: "800px 0px"});
+        io.observe(sentinel);
+      }
+
+      // -------------------------
+      // Load data
+      // -------------------------
+      async function tryLoadManifest(){
+        try{
+          const res = await fetch(MANIFEST_URL, {cache:"no-store"});
+          if (!res.ok) return null;
+          return await res.json();
+        }catch{
+          return null;
+        }
+      }
+
+      function setStatus(msg){
+        loadStatusEl.textContent = msg || "";
+      }
+
+      async function loadAllByManifest(m){
+        loadingChunks = true;
+        setStatus(`インデックス読込中… 0 / ${m.chunk_files.length}`);
+
+        // まずセレクトをmanifestから作れる（全件読まなくてもOK）
+        fillSelect(actress, m.all_actresses || [], "女優（すべて）");
+        setAllTags(m.all_tags || []);
+
+        renderTopTags(m.top_tags || []);
+
+        // URL状態反映（optionsが入った後に）
+        const st = readStateFromUrl();
+        applyStateToControls(st);
+
+        // チャンクを順次読み込み。読み込むたびに検索結果も更新。
+        all = [];
+        for (let i=0; i<m.chunk_files.length; i++){
+          const file = m.chunk_files[i];
+          const res = await fetch(`../assets/${file}`, {cache:"no-store"});
+          if (!res.ok) throw new Error("チャンク取得失敗: " + file);
+
+          const chunk = await res.json();
+          all.push(...chunk);
+
+          setStatus(`インデックス読込中… ${i+1} / ${m.chunk_files.length}（${all.length}件読み込み済）`);
+
+          // 読み込み途中でも検索できるように更新（重くならないよう最初は控えめに）
+          applyFilters({resetRender:true});
+        }
+
+        setStatus(`読込完了：${all.length}件`);
+        loadingChunks = false;
+      }
+
+      async function loadFallbackSingle(){
+        setStatus("インデックス読込中…");
+        const res = await fetch(FALLBACK_DATA_URL, {cache:"no-store"});
+        if (!res.ok) throw new Error("JSON取得に失敗: " + res.status);
+
+        all = await res.json();
+
+        // セレクトは全件から作る（小規模用）
+        const allActresses = uniqSorted(all.flatMap(x => x.actresses || []));
+        const allTags = uniqSorted(all.flatMap(x => x.tags || []));
+
+        fillSelect(actress, allActresses, "女優（すべて）");
+        setAllTags(allTags);
+
+        // 人気タグは簡易集計
+        const counts = {};
+        for (const w of all){
+          for (const t of (w.tags||[])){
+            counts[t] = (counts[t]||0) + 1;
+          }
+        }
+        const top = Object.entries(counts).sort((a,b)=> b[1]-a[1]).slice(0,30).map(([name,count])=>({name,count}));
+        renderTopTags(top);
+
+        const st = readStateFromUrl();
+        applyStateToControls(st);
+
+        setStatus(`読込完了：${all.length}件`);
+        applyFilters({resetRender:true});
+      }
+
+      async function init(){
+        manifest = await tryLoadManifest();
+
+        if (manifest){
+          updateCounters();
+          await loadAllByManifest(manifest);
+        }else{
+          await loadFallbackSingle();
+        }
+
+        updateCounters();
+        setupInfiniteScroll();
+      }
+
+      // events
+      q.addEventListener("input", () => applyFilters({resetRender:true}));
+      actress.addEventListener("change", () => applyFilters({resetRender:true}));
+      mode.addEventListener("change", () => applyFilters({resetRender:true}));
+      sort.addEventListener("change", () => applyFilters({resetRender:true}));
+
+      // タグ入力：Enterで追加
+      tagInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter"){
+          e.preventDefault();
+          const v = tagInput.value.trim();
+          if (!v) return;
+          addTag(v);
+          tagInput.value = "";
+          applyFilters({resetRender:true});
+        }
+      });
+
+      reset.addEventListener("click", () => {
+        q.value = "";
+        actress.value = "";
+        setSelectedTags([]);
+        tagInput.value = "";
+        mode.value = "or";
+        sort.value = "new";
+        applyFilters({resetRender:true});
+        q.focus();
+      });
+
+      loadMoreBtn.addEventListener("click", () => {
+        renderMore();
+      });
+
+      init().catch(err => {
+        results.innerHTML = `<div class="meta">読み込みエラー：${escapeHtml(err.message)}</div>`;
+        setStatus("");
+      });
+    })();
+  </script>
+</body>
+</html>

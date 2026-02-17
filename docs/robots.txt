@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://review-list.github.io/TEST/sitemap.xml
