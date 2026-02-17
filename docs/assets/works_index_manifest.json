@@ -1,8 +1,7 @@
 {
-  "version": 1,
-  "total_items": 742,
+  "total": 742,
   "chunk_size": 2000,
-  "chunk_files": [
+  "chunks": [
     "works_index_000.json"
   ],
   "all_tags": [
@@ -1089,7 +1088,7 @@
     },
     {
       "name": "4時間以上作品",
-      "count": 78
+      "count": 80
     },
     {
       "name": "妄想族",
@@ -1154,46 +1153,6 @@
     {
       "name": "パイズリ",
       "count": 35
-    },
-    {
-      "name": "ランジェリー",
-      "count": 34
-    },
-    {
-      "name": "VR専用",
-      "count": 33
-    },
-    {
-      "name": "ドラマ",
-      "count": 33
-    },
-    {
-      "name": "ハイクオリティVR",
-      "count": 33
-    },
-    {
-      "name": "ハメ撮り",
-      "count": 33
-    },
-    {
-      "name": "8KVR",
-      "count": 32
-    },
-    {
-      "name": "主観",
-      "count": 29
-    },
-    {
-      "name": "エマニエル",
-      "count": 27
-    },
-    {
-      "name": "ナンパ",
-      "count": 26
-    },
-    {
-      "name": "お姉さん",
-      "count": 25
     }
   ],
   "top_actresses": [
@@ -1316,46 +1275,10 @@
     {
       "name": "宮城りえ",
       "count": 6
-    },
-    {
-      "name": "新井リマ",
-      "count": 6
-    },
-    {
-      "name": "新村あかり",
-      "count": 6
-    },
-    {
-      "name": "有岡みう",
-      "count": 6
-    },
-    {
-      "name": "有村のぞみ",
-      "count": 6
-    },
-    {
-      "name": "森日向子",
-      "count": 6
-    },
-    {
-      "name": "西元めいさ",
-      "count": 6
-    },
-    {
-      "name": "七瀬アリス",
-      "count": 5
-    },
-    {
-      "name": "吉根ゆりあ",
-      "count": 5
-    },
-    {
-      "name": "大槻ひびき",
-      "count": 5
-    },
-    {
-      "name": "小花のん",
-      "count": 5
     }
-  ]
+  ],
+  "all_makers": [],
+  "all_series": [],
+  "top_makers": [],
+  "top_series": []
 }

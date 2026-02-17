@@ -23,16 +23,35 @@
   <style>
     .media-section{margin-top:14px}
     .media-title{font-weight:900; margin:0 0 10px}
+
+    /* 詳細ページ内のバッジ（一覧は共通CSS側） */
+    .badges{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px}
+    .badge{
+      display:inline-flex; align-items:center; gap:6px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:6px 10px;
+      background:rgba(255,255,255,.05);
+      font-weight:900;
+      font-size:12px;
+      color:var(--text);
+    }
+    .badge.on{border-color:rgba(96,165,250,.55); background:rgba(96,165,250,.10)}
+    .badge small{opacity:.8; font-weight:800}
+    .badge.sm{padding:4px 8px; font-size:11px}
+
     .video-wrap{
       border:1px solid var(--line);
       border-radius:16px;
       overflow:hidden;
-      background:rgba(0,0,0,.25);
+      background:#000;
       box-shadow: var(--shadow);
     }
-    .video-aspect{position:relative; padding-top:56.25%;}
-    .video-aspect iframe{position:absolute; inset:0; width:100%; height:100%; border:0;}
-    .gallery{
+    /* 埋め込みページ内の余白対策：iframeのviewport自体をプレイヤーサイズに合わせる */
+    .video-stage{position:relative; width:100%; overflow:hidden; background:#000;}
+    .video-iframe{position:absolute; inset:0; width:100%; height:100%; border:0; display:block;}
+
+.gallery{
       display:grid;
       grid-template-columns:repeat(4, minmax(0, 1fr));
       gap:10px;
@@ -48,6 +67,7 @@
       cursor:pointer;
     }
     .gitem img{width:100%; height:100%; aspect-ratio: 3/4; object-fit:cover; display:block;}
+
     .lightbox{
       position:fixed; inset:0;
       background:rgba(0,0,0,.78);
@@ -59,14 +79,57 @@
     .lightbox-inner{
       max-width: 1100px;
       width: 100%;
+      max-height: 92vh;
       background:rgba(15,23,42,.92);
       border:1px solid var(--line);
       border-radius:18px;
       overflow:hidden;
       box-shadow: var(--shadow);
       position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:12px;
     }
-    .lightbox-img{width:100%; height:auto; display:block;}
+    /* 縦長画像もPCで全体が見えるように、最大高さをviewportに合わせる */
+    .lightbox-img{
+      max-width:100%;
+      max-height: calc(92vh - 24px);
+      width:auto;
+      height:auto;
+      object-fit:contain;
+      display:block;
+      cursor:pointer;
+      border-radius:12px;
+      background:#000;
+    }
+
+    .lightbox-nav{
+      position:absolute;
+      top:50%; transform:translateY(-50%);
+      width:44px; height:44px; border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      cursor:pointer;
+      font-size:22px;
+      display:flex; align-items:center; justify-content:center;
+      user-select:none;
+      z-index:2;
+    }
+    .lightbox-nav:hover{border-color:rgba(96,165,250,.55)}
+    .lightbox-nav.prev{left:10px}
+    .lightbox-nav.next{right:10px}
+
+    .lightbox-hint{
+      position:absolute; left:0; right:0; bottom:0;
+      padding:10px 14px;
+      background:linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0));
+      font-size:12px;
+      color:rgba(255,255,255,.85);
+      pointer-events:none;
+      z-index:2;
+    }
     .lightbox-close{
       position:absolute; top:10px; right:10px;
       width:36px; height:36px; border-radius:999px;
@@ -76,9 +139,11 @@
       cursor:pointer;
       font-size:18px;
       display:flex; align-items:center; justify-content:center;
+      z-index:3;
     }
     .lightbox-close:hover{border-color:rgba(96,165,250,.55)}
   </style>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "ホーム", "item": "https://review-list.github.io/TEST/"}, {"@type": "ListItem", "position": 2, "name": "作品一覧", "item": "https://review-list.github.io/TEST/pages/1/"}, {"@type": "ListItem", "position": 3, "name": "おま〇こズボズボ 美尻デカ尻ディルドオナニー 貴方のおちん〇ん食べちゃうぞ", "item": "https://review-list.github.io/TEST/works/h_283pym00554/"}]}, {"@type": "VideoObject", "name": "おま〇こズボズボ 美尻デカ尻ディルドオナニー 貴方のおちん〇ん食べちゃうぞ", "description": "おま〇こズボズボ 美尻デカ尻ディルドオナニー 貴方のおちん〇ん食べちゃうぞ", "url": "https://review-list.github.io/TEST/works/h_283pym00554/", "datePublished": "2026-03-15", "thumbnailUrl": "https://pics.dmm.co.jp/digital/video/h_283pym00554/h_283pym00554pl.jpg", "actor": [{"@type": "Person", "name": "綾瀬こころ"}, {"@type": "Person", "name": "加護まり"}, {"@type": "Person", "name": "乃木蛍"}, {"@type": "Person", "name": "愛瀬ゆう（愛瀬ゆうり）"}, {"@type": "Person", "name": "八森わか菜"}, {"@type": "Person", "name": "指原美奈"}, {"@type": "Person", "name": "浅桜エリ"}, {"@type": "Person", "name": "乃南ゆり"}, {"@type": "Person", "name": "滝ゆいな"}, {"@type": "Person", "name": "橘紅葉"}], "genre": ["お姉さん", "局部アップ", "オナニー", "主観", "ディルド", "騎乗位", "4時間以上作品", "4K", "ハイビジョン"]}]}</script>
 </head>
 <body>
   <header class="header">
@@ -97,6 +162,14 @@
     <section class="hero">
       <h1>おま〇こズボズボ 美尻デカ尻ディルドオナニー 貴方のおちん〇ん食べちゃうぞ</h1>
       <p>公開日：2026-03-15 00:00:00</p>
+
+      
+      
+      
+      <div class="badges">
+        <span class="badge on">🖼️ サンプル画像あり<small>（15枚）</small></span>
+        <span class="badge on">🎬 サンプル動画あり</span>
+      </div>
     </section>
 
     <article class="card">
@@ -111,6 +184,9 @@
         
 
         
+        
+
+        
 
         
           <div class="small" style="margin-top:6px;">価格：500~</div>
@@ -119,25 +195,25 @@
         
           <div class="tags" style="margin-top:12px;">
             
-              <a class="tag" href="../../actresses/綾瀬こころ/">綾瀬こころ</a>
+              <a class="tag" href="../actresses/綾瀬こころ/">綾瀬こころ</a>
             
-              <a class="tag" href="../../actresses/加護まり/">加護まり</a>
+              <a class="tag" href="../actresses/加護まり/">加護まり</a>
             
-              <a class="tag" href="../../actresses/乃木蛍/">乃木蛍</a>
+              <a class="tag" href="../actresses/乃木蛍/">乃木蛍</a>
             
-              <a class="tag" href="../../actresses/愛瀬ゆう（愛瀬ゆうり）/">愛瀬ゆう（愛瀬ゆうり）</a>
+              <a class="tag" href="../actresses/愛瀬ゆう（愛瀬ゆうり）/">愛瀬ゆう（愛瀬ゆうり）</a>
             
-              <a class="tag" href="../../actresses/八森わか菜/">八森わか菜</a>
+              <a class="tag" href="../actresses/八森わか菜/">八森わか菜</a>
             
-              <a class="tag" href="../../actresses/指原美奈/">指原美奈</a>
+              <a class="tag" href="../actresses/指原美奈/">指原美奈</a>
             
-              <a class="tag" href="../../actresses/浅桜エリ/">浅桜エリ</a>
+              <a class="tag" href="../actresses/浅桜エリ/">浅桜エリ</a>
             
-              <a class="tag" href="../../actresses/乃南ゆり/">乃南ゆり</a>
+              <a class="tag" href="../actresses/乃南ゆり/">乃南ゆり</a>
             
-              <a class="tag" href="../../actresses/滝ゆいな/">滝ゆいな</a>
+              <a class="tag" href="../actresses/滝ゆいな/">滝ゆいな</a>
             
-              <a class="tag" href="../../actresses/橘紅葉/">橘紅葉</a>
+              <a class="tag" href="../actresses/橘紅葉/">橘紅葉</a>
             
           </div>
         
@@ -145,23 +221,23 @@
         
           <div class="tags" style="margin-top:12px;">
             
-              <a class="tag" href="../../genres/お姉さん/">お姉さん</a>
+              <a class="tag" href="../genres/お姉さん/">お姉さん</a>
             
-              <a class="tag" href="../../genres/局部アップ/">局部アップ</a>
+              <a class="tag" href="../genres/局部アップ/">局部アップ</a>
             
-              <a class="tag" href="../../genres/オナニー/">オナニー</a>
+              <a class="tag" href="../genres/オナニー/">オナニー</a>
             
-              <a class="tag" href="../../genres/主観/">主観</a>
+              <a class="tag" href="../genres/主観/">主観</a>
             
-              <a class="tag" href="../../genres/ディルド/">ディルド</a>
+              <a class="tag" href="../genres/ディルド/">ディルド</a>
             
-              <a class="tag" href="../../genres/騎乗位/">騎乗位</a>
+              <a class="tag" href="../genres/騎乗位/">騎乗位</a>
             
-              <a class="tag" href="../../genres/4時間以上作品/">4時間以上作品</a>
+              <a class="tag" href="../genres/4時間以上作品/">4時間以上作品</a>
             
-              <a class="tag" href="../../genres/4K/">4K</a>
+              <a class="tag" href="../genres/4K/">4K</a>
             
-              <a class="tag" href="../../genres/ハイビジョン/">ハイビジョン</a>
+              <a class="tag" href="../genres/ハイビジョン/">ハイビジョン</a>
             
           </div>
         
@@ -171,7 +247,6 @@
           
           
             <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dh_283pym00554&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
-          
           
           
           
@@ -187,11 +262,31 @@
 
     
       
+      
+      
+      
+        
+        
+          
+          
+          
+            
+            
+          
+        
+      
+
       <section class="media-section">
         <h2 class="media-title">サンプル動画</h2>
-        <div class="video-wrap">
-          <div class="video-aspect">
-            <iframe src="https://www.dmm.co.jp/litevideo/-/part/=/cid=h_283pym554/size=720_480/affi_id=risutotube-990/" allowfullscreen loading="lazy"></iframe>
+        <div class="video-wrap" style="max-width: 720px; margin:0 auto;">
+          <div class="video-stage" style="aspect-ratio: 720/480;">
+            <iframe
+              class="video-iframe"
+              src="https://www.dmm.co.jp/litevideo/-/part/=/cid=h_283pym554/size=720_480/affi_id=risutotube-990/"
+              allow="autoplay; fullscreen"
+              scrolling="no"
+              allowfullscreen
+              loading="lazy"></iframe>
           </div>
         </div>
         <div class="small" style="margin-top:8px;">
@@ -281,28 +376,6 @@
           
           <div class="card">
             
-              <a href="../../works/gvh00830/" style="display:block;">
-                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/gvh00830/gvh00830pl.jpg" alt="潰れかかった温泉旅館の姉妹女将は持ち前のスキルを活かしたエロすぎる接客で経営を立て直す！ 八森わか菜/由良かな" loading="lazy">
-              </a>
-            
-            <div class="pad">
-              <p class="title" style="margin:0 0 6px;">
-                <a href="../../works/gvh00830/" style="color:inherit; text-decoration:none;">潰れかかった温泉旅館の姉妹女将は持ち前のスキルを活かしたエロすぎる接客で経営を立て直す！ 八森わか菜/由良かな</a>
-              </p>
-              <div class="meta">公開日：2026-03-14 00:00:00</div>
-
-              <div class="actions">
-                <a class="btn secondary" href="../../works/gvh00830/">詳細を見る</a>
-                
-                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dgvh00830&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
-                
-              </div>
-            </div>
-          </div>
-        
-          
-          <div class="card">
-            
               <a href="../../works/ppbd00318/" style="display:block;">
                 <img class="thumb" src="https://pics.dmm.co.jp/digital/video/ppbd00318/ppbd00318pl.jpg" alt="2020～2025OPPAIベストプロポーション 圧倒的な存在感で令和のAV界を盛り上げた巨乳女優72名470分" loading="lazy">
               </a>
@@ -312,6 +385,18 @@
                 <a href="../../works/ppbd00318/" style="color:inherit; text-decoration:none;">2020～2025OPPAIベストプロポーション 圧倒的な存在感で令和のAV界を盛り上げた巨乳女優72名470分</a>
               </p>
               <div class="meta">公開日：2026-03-13 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                  
+                    <span class="badge sm on">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
 
               <div class="actions">
                 <a class="btn secondary" href="../../works/ppbd00318/">詳細を見る</a>
@@ -335,6 +420,20 @@
               </p>
               <div class="meta">公開日：2026-03-13 00:00:00</div>
 
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
               <div class="actions">
                 <a class="btn secondary" href="../../works/mkck00413/">詳細を見る</a>
                 
@@ -344,23 +443,49 @@
             </div>
           </div>
         
+      </div>
+    
+
+    
+
+    
+      <hr style="margin:18px 0; border:0; border-top:1px solid rgba(255,255,255,.08);">
+
+      <h2 style="margin:0 0 10px;">関連作品（同ジャンル）</h2>
+
+      <div class="grid">
+        
           
           <div class="card">
             
-              <a href="../../works/h_1342nsm00070/" style="display:block;">
-                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/h_1342nsm00070/h_1342nsm00070pl.jpg" alt="媚薬オイルマッサージ 痴●盗撮＆中出し素人娘VOL.70 超強力媚薬を配合したマッサージオイルを施術中に知らずに塗りこまれたオンナは、身体の火照りに驚き、チ〇ポを欲しがる自分に戸惑い、垂れ出したマン汁に恥ずかしがりながらも生ハメ中出しまで欲してしまう！" loading="lazy">
+              <a href="../../works/h_283pym00557/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/h_283pym00557/h_283pym00557pl.jpg" alt="「私でシコって」 語りかけ自画撮りオナニー 40人" loading="lazy">
               </a>
             
             <div class="pad">
               <p class="title" style="margin:0 0 6px;">
-                <a href="../../works/h_1342nsm00070/" style="color:inherit; text-decoration:none;">媚薬オイルマッサージ 痴●盗撮＆中出し素人娘VOL.70 超強力媚薬を配合したマッサージオイルを施術中に知らずに塗りこまれたオンナは、身体の火照りに驚き、チ〇ポを欲しがる自分に戸惑い、垂れ出したマン汁に恥ずかしがりながらも生ハメ中出しまで欲してしまう！</a>
+                <a href="../../works/h_283pym00557/" style="color:inherit; text-decoration:none;">「私でシコって」 語りかけ自画撮りオナニー 40人</a>
               </p>
-              <div class="meta">公開日：2026-03-09 00:00:00</div>
+              <div class="meta">公開日：2026-03-15 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
 
               <div class="actions">
-                <a class="btn secondary" href="../../works/h_1342nsm00070/">詳細を見る</a>
+                <a class="btn secondary" href="../../works/h_283pym00557/">詳細を見る</a>
                 
-                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dh_1342nsm00070&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dh_283pym00557&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
                 
               </div>
             </div>
@@ -369,20 +494,383 @@
           
           <div class="card">
             
-              <a href="../../works/1ang00014/" style="display:block;">
-                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/1ang00014/1ang00014pl.jpg" alt="春原未来×乃木蛍 姉御の個撮 神レズスク水 女が自らカメラを持ち可愛い女子の水着姿をじっとり撮影！親父の個撮ゆずりのハミ毛、ジョリワキ等のフェチ接写はもちろん女に撮られる恥ずかしい放尿やローション密着やレズSEXを完全着衣で楽しむレズハメ撮りAV" loading="lazy">
+              <a href="../../works/h_047wa00581/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/h_047wa00581/h_047wa00581pl.jpg" alt="眠れる膣の美女 夢アクメ中出し32人 5時間" loading="lazy">
               </a>
             
             <div class="pad">
               <p class="title" style="margin:0 0 6px;">
-                <a href="../../works/1ang00014/" style="color:inherit; text-decoration:none;">春原未来×乃木蛍 姉御の個撮 神レズスク水 女が自らカメラを持ち可愛い女子の水着姿をじっとり撮影！親父の個撮ゆずりのハミ毛、ジョリワキ等のフェチ接写はもちろん女に撮られる恥ずかしい放尿やローション密着やレズSEXを完全着衣で楽しむレズハメ撮りAV</a>
+                <a href="../../works/h_047wa00581/" style="color:inherit; text-decoration:none;">眠れる膣の美女 夢アクメ中出し32人 5時間</a>
               </p>
-              <div class="meta">公開日：2026-03-02 00:00:00</div>
+              <div class="meta">公開日：2026-03-15 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
 
               <div class="actions">
-                <a class="btn secondary" href="../../works/1ang00014/">詳細を見る</a>
+                <a class="btn secondary" href="../../works/h_047wa00581/">詳細を見る</a>
                 
-                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3D1ang00014&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dh_047wa00581&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/h_021pts00540/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/h_021pts00540/h_021pts00540pl.jpg" alt="結婚式帰りの友達同士！ 童貞君とSEXの練習してあげてくれませんか？初めての膣キュンっシンデレラ3P筆下ろし！" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/h_021pts00540/" style="color:inherit; text-decoration:none;">結婚式帰りの友達同士！ 童貞君とSEXの練習してあげてくれませんか？初めての膣キュンっシンデレラ3P筆下ろし！</a>
+              </p>
+              <div class="meta">公開日：2026-03-15 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/h_021pts00540/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dh_021pts00540&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/prtd00035/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/prtd00035/prtd00035pl.jpg" alt="緊縛麻薬捜査官～救出まで2時間、私は絶対に諦めない～ 宮西ひかる" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/prtd00035/" style="color:inherit; text-decoration:none;">緊縛麻薬捜査官～救出まで2時間、私は絶対に諦めない～ 宮西ひかる</a>
+              </p>
+              <div class="meta">公開日：2026-03-13 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/prtd00035/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dprtd00035&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/prst00025/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/prst00025/prst00025pl.jpg" alt="新人 葉月なぎさ この美女の騎乗位で暴発したい。 男をイカせる素人離れしたエロセンスの現役看護師 プロ男優のイキ顔見たさにAVデビュー" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/prst00025/" style="color:inherit; text-decoration:none;">新人 葉月なぎさ この美女の騎乗位で暴発したい。 男をイカせる素人離れしたエロセンスの現役看護師 プロ男優のイキ顔見たさにAVデビュー</a>
+              </p>
+              <div class="meta">公開日：2026-03-13 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/prst00025/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dprst00025&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/pbd00514/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/pbd00514/pbd00514pl.jpg" alt="白峰ミウ PERFECTベスト 24時間25作品66本番" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/pbd00514/" style="color:inherit; text-decoration:none;">白峰ミウ PERFECTベスト 24時間25作品66本番</a>
+              </p>
+              <div class="meta">公開日：2026-03-13 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/pbd00514/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dpbd00514&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/mida00589/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/mida00589/mida00589pl.jpg" alt="絶倫オヤジ上司のゴミ部屋に監禁されて拘束中出しレ×プオナホ化調教 仲村みう" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/mida00589/" style="color:inherit; text-decoration:none;">絶倫オヤジ上司のゴミ部屋に監禁されて拘束中出しレ×プオナホ化調教 仲村みう</a>
+              </p>
+              <div class="meta">公開日：2026-03-13 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/mida00589/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dmida00589&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/miab00634/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/miab00634/miab00634pl.jpg" alt="スケベ淫乱おま○こ限界突破 北野未奈リミッターカット 初・ポルチオ徹底開発" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/miab00634/" style="color:inherit; text-decoration:none;">スケベ淫乱おま○こ限界突破 北野未奈リミッターカット 初・ポルチオ徹底開発</a>
+              </p>
+              <div class="meta">公開日：2026-03-13 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/miab00634/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dmiab00634&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/hmn00814/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/hmn00814/hmn00814pl.jpg" alt="SEX射精治療専門中出し医院 勃起してきたら美尻ハードピストンで異常勃起チ○ポ患者さんを性交リハビリテーション 白雪ひなの" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/hmn00814/" style="color:inherit; text-decoration:none;">SEX射精治療専門中出し医院 勃起してきたら美尻ハードピストンで異常勃起チ○ポ患者さんを性交リハビリテーション 白雪ひなの</a>
+              </p>
+              <div class="meta">公開日：2026-03-13 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/hmn00814/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dhmn00814&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/tpin00101/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/tpin00101/tpin00101pl.jpg" alt="透け乳首の女神 彼氏とケンカして部屋を追い出された薄着のお姉さんが余りにもエロかったので…「良かったらウチで休めば？」と、ワンチャン狙いで部屋に誘ってみた件。7人4.5時間" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/tpin00101/" style="color:inherit; text-decoration:none;">透け乳首の女神 彼氏とケンカして部屋を追い出された薄着のお姉さんが余りにもエロかったので…「良かったらウチで休めば？」と、ワンチャン狙いで部屋に誘ってみた件。7人4.5時間</a>
+              </p>
+              <div class="meta">公開日：2026-03-07 00:00:00</div>
+
+              
+              
+              
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/tpin00101/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dtpin00101&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/cead00733/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/cead00733/cead00733pl.jpg" alt="『小野坂ゆいか』が生チ〇ポの侵入を許す～全て生中出しフェロモンだだ洩れSEX" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/cead00733/" style="color:inherit; text-decoration:none;">『小野坂ゆいか』が生チ〇ポの侵入を許す～全て生中出しフェロモンだだ洩れSEX</a>
+              </p>
+              <div class="meta">公開日：2026-03-07 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/cead00733/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dcead00733&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
+                
+              </div>
+            </div>
+          </div>
+        
+          
+          <div class="card">
+            
+              <a href="../../works/ipzz00819/" style="display:block;">
+                <img class="thumb" src="https://pics.dmm.co.jp/digital/video/ipzz00819/ipzz00819pl.jpg" alt="毎朝テレビで見るおっとりお天気お姉さんのふしだらな痴●絶頂 花咲澪" loading="lazy">
+              </a>
+            
+            <div class="pad">
+              <p class="title" style="margin:0 0 6px;">
+                <a href="../../works/ipzz00819/" style="color:inherit; text-decoration:none;">毎朝テレビで見るおっとりお天気お姉さんのふしだらな痴●絶頂 花咲澪</a>
+              </p>
+              <div class="meta">公開日：2026-03-06 00:00:00</div>
+
+              
+              
+              
+              
+                <div class="badges" style="margin-top:10px;">
+                  
+                    <span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>
+                  
+                  
+                    <span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>
+                  
+                </div>
+              
+
+              <div class="actions">
+                <a class="btn secondary" href="../../works/ipzz00819/">詳細を見る</a>
+                
+                  <a class="btn" href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3Dipzz00819&amp;af_id=risutotube-990&amp;ch=api" target="_blank" rel="noopener">公式ページを見る</a>
                 
               </div>
             </div>
@@ -390,26 +878,50 @@
         
       </div>
     
-
-    <div class="footer">© 2026 Review Catalog</div>
+<div class="footer">© 2026 Review Catalog</div>
   </main>
 
   <!-- Lightbox -->
   <div class="lightbox" id="lightbox" aria-hidden="true">
     <div class="lightbox-inner">
       <button class="lightbox-close" id="lbClose" type="button" aria-label="閉じる">×</button>
+      <button class="lightbox-nav prev" id="lbPrev" type="button" aria-label="前の画像">‹</button>
+      <button class="lightbox-nav next" id="lbNext" type="button" aria-label="次の画像">›</button>
       <img class="lightbox-img" id="lbImg" src="" alt="">
+      <div class="lightbox-hint">画像をクリック：左側=前 / 右側=次　（← → キーでもOK）</div>
     </div>
   </div>
 
-  <script>
+    <script>
     (function(){
+      // -------------------------
+      // lightbox: ヒーロー(サムネ) + サンプル画像を1つのギャラリーとして扱う
+      // -------------------------
       const lb = document.getElementById("lightbox");
       const lbImg = document.getElementById("lbImg");
       const lbClose = document.getElementById("lbClose");
+      const lbPrev = document.getElementById("lbPrev");
+      const lbNext = document.getElementById("lbNext");
 
-      function openLb(src){
-        lbImg.src = src;
+      const heroLink = document.querySelector(".hero-link");
+      const heroSrc = heroLink ? heroLink.getAttribute("href") : null;
+
+      const galleryEl = document.getElementById("gallery");
+      const galleryItems = galleryEl ? Array.from(galleryEl.querySelectorAll(".gitem")) : [];
+      const sampleSrcs = galleryItems.map(el => el.getAttribute("data-img")).filter(Boolean);
+
+      const hasHero = !!heroSrc;
+      const allSrcs = hasHero ? [heroSrc, ...sampleSrcs] : sampleSrcs;
+      let currentIndex = -1;
+
+      function renderLb(){
+        if (currentIndex < 0 || currentIndex >= allSrcs.length) return;
+        lbImg.src = allSrcs[currentIndex];
+      }
+      function openLbByIndex(idx){
+        if (!allSrcs.length) return;
+        currentIndex = (idx + allSrcs.length) % allSrcs.length;
+        renderLb();
         lb.classList.add("open");
         lb.setAttribute("aria-hidden", "false");
       }
@@ -417,35 +929,58 @@
         lb.classList.remove("open");
         lb.setAttribute("aria-hidden", "true");
         lbImg.src = "";
+        currentIndex = -1;
+      }
+      function nextLb(){
+        if (allSrcs.length <= 1) return;
+        currentIndex = (currentIndex + 1) % allSrcs.length;
+        renderLb();
+      }
+      function prevLb(){
+        if (allSrcs.length <= 1) return;
+        currentIndex = (currentIndex - 1 + allSrcs.length) % allSrcs.length;
+        renderLb();
       }
 
-      // サンプル画像クリックで拡大
-      const g = document.getElementById("gallery");
-      if (g){
-        g.addEventListener("click", (e) => {
+      // サンプル一覧クリック：サンプルを開く（ヒーローがあれば+1）
+      if (galleryEl){
+        galleryEl.addEventListener("click", (e) => {
           const t = e.target.closest(".gitem");
           if (!t) return;
-          const src = t.getAttribute("data-img");
-          if (src) openLb(src);
+          const idx = galleryItems.indexOf(t);
+          if (idx >= 0) openLbByIndex(idx + (hasHero ? 1 : 0));
         });
       }
 
-      // メイン画像クリックでも拡大（リンク）
-      const hero = document.querySelector(".hero-link");
-      if (hero){
-        hero.addEventListener("click", (e) => {
+      // ヒーロー（サムネ）クリック：ヒーロー画像を最初に表示
+      if (heroLink){
+        heroLink.addEventListener("click", (e) => {
           e.preventDefault();
-          const href = hero.getAttribute("href");
-          if (href) openLb(href);
+          if (allSrcs.length) openLbByIndex(0);
         });
       }
+
+      lbNext.addEventListener("click", (e) => { e.stopPropagation(); nextLb(); });
+      lbPrev.addEventListener("click", (e) => { e.stopPropagation(); prevLb(); });
+
+      // 画像クリック：左半分=prev / 右半分=next
+      lbImg.addEventListener("click", (e) => {
+        if (allSrcs.length <= 1) return;
+        const rect = lbImg.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x < rect.width * 0.5) prevLb();
+        else nextLb();
+      });
 
       lb.addEventListener("click", (e) => {
         if (e.target === lb) closeLb();
       });
       lbClose.addEventListener("click", closeLb);
       document.addEventListener("keydown", (e) => {
+        if (!lb.classList.contains("open")) return;
         if (e.key === "Escape") closeLb();
+        if (e.key === "ArrowRight") nextLb();
+        if (e.key === "ArrowLeft") prevLb();
       });
     })();
   </script>
