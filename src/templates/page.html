@@ -145,6 +145,7 @@
             <a class="btn" href="{{ link }}" target="_blank" rel="noopener">公式ページを見る</a>
           {% endif %}
           {% set mv = w.sample_movie or w.sample_movie_url %}
+          {% if mv %}{% set mv = mv|replace('http://','https://') %}{% endif %}
           {% if mv %}
             <a class="btn secondary" href="{{ mv }}" target="_blank" rel="noopener">サンプル動画（別タブ）</a>
           {% endif %}
@@ -162,6 +163,7 @@
     {% endif %}
 
     {% if sample_movie %}
+      {% set sample_movie = sample_movie|replace('http://','https://') %}
       <section class="media-section">
         <h2 class="media-title">サンプル動画</h2>
         <div class="video-wrap">

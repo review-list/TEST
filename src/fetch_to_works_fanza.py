@@ -215,6 +215,9 @@ def extract_sample_movie_urls(item: dict) -> Tuple[Optional[str], Dict[str, str]
         if not isinstance(v, str):
             continue
         if k.startswith("size_") and v:
+            # http -> https 正規化（Mixed Content 回避）
+            if v.startswith("http://"):
+                v = "https://" + v[len("http://"): ]
             urls[k] = v
 
     prefer = ["size_720_480", "size_644_414", "size_560_360", "size_476_306"]
@@ -226,6 +229,9 @@ def extract_sample_movie_urls(item: dict) -> Tuple[Optional[str], Dict[str, str]
     if not best and urls:
         # 何か1つ
         best = next(iter(urls.values()))
+
+    if isinstance(best, str) and best.startswith("http://"):
+        best = "https://" + best[len("http://"): ]
 
     return best, urls
 
