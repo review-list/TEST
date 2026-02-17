@@ -1,11 +1,11 @@
 name: 🔄自動更新（API取得→ビルド→コミット）
 
 on:
-  workflow_dispatch:
-  schedule:
+   workflow_dispatch:
+  #消すschedule:
     # 毎日 03:15 (JST 12:15) に実行したい例
     # GitHub ActionsのcronはUTCなので注意
-    - cron: "15 3 * * *"
+    #消す- cron: "15 3 * * *"
 
 permissions:
   contents: write
