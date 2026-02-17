@@ -37,6 +37,27 @@
       font-weight:800;
     }
     .controls button:hover{border-color:rgba(96,165,250,.55)}
+    .toggle{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:800;
+      user-select:none;
+    }
+    .toggle:hover{border-color:rgba(96,165,250,.55)}
+    .toggle.active{
+      border-color:rgba(96,165,250,.75);
+      background:rgba(96,165,250,.22);
+      color:#dbeafe;
+    }
+    .toggle input{accent-color:var(--accent);}
+
     .controls select option, .controls select optgroup{
       background:#0b1220;
       color:var(--text);
@@ -143,6 +164,10 @@
           <option value="and">タグ AND（全部含む）</option>
         </select>
 
+        <label class="toggle" id="tOnlyImg"><input id="onlyImg" type="checkbox">🖼️ サンプル画像あり</label>
+        <label class="toggle" id="tOnlyMov"><input id="onlyMov" type="checkbox">🎬 サンプル動画あり</label>
+
+
         <button id="reset" type="button">リセット</button>
 
         <div class="count">
@@ -195,6 +220,10 @@
       const selectedTagsEl = document.getElementById("selectedTags");
       const mode = document.getElementById("mode");
       const sort = document.getElementById("sort");
+      const onlyImg = document.getElementById("onlyImg");
+      const onlyMov = document.getElementById("onlyMov");
+      const tOnlyImg = document.getElementById("tOnlyImg");
+      const tOnlyMov = document.getElementById("tOnlyMov");
       const reset = document.getElementById("reset");
 
       const results = document.getElementById("results");
@@ -328,6 +357,13 @@
         }
       }
 
+
+      function updateToggleStyles(){
+        if (!tOnlyImg || !tOnlyMov) return;
+        tOnlyImg.classList.toggle("active", !!onlyImg.checked);
+        tOnlyMov.classList.toggle("active", !!onlyMov.checked);
+      }
+
       // -------------------------
       // URL state
       // -------------------------
@@ -339,6 +375,8 @@
           tags: (u.searchParams.get("tags") || "").split(",").filter(Boolean),
           mode: u.searchParams.get("mode") || "or",
           sort: u.searchParams.get("sort") || "new",
+          img: u.searchParams.get("img") === "1",
+          mov: u.searchParams.get("mov") === "1",
         };
       }
 
@@ -352,6 +390,9 @@
         if (st.mode && st.mode !== "or") u.searchParams.set("mode", st.mode); else u.searchParams.delete("mode");
         if (st.sort && st.sort !== "new") u.searchParams.set("sort", st.sort); else u.searchParams.delete("sort");
 
+        if (st.img) u.searchParams.set("img", "1"); else u.searchParams.delete("img");
+        if (st.mov) u.searchParams.set("mov", "1"); else u.searchParams.delete("mov");
+
         history.replaceState({}, "", u.toString());
       }
 
@@ -360,6 +401,9 @@
         actress.value = st.a || "";
         mode.value = st.mode || "or";
         sort.value = st.sort || "new";
+        onlyImg.checked = !!st.img;
+        onlyMov.checked = !!st.mov;
+        updateToggleStyles();
 
         // tags（URL） -> 選択中タグ
         setSelectedTags(st.tags || []);
@@ -372,6 +416,8 @@
           tags: selectedTags,
           mode: mode.value,
           sort: sort.value,
+          img: !!onlyImg.checked,
+          mov: !!onlyMov.checked,
         };
       }
 
@@ -432,7 +478,10 @@
           const okA  = !a  || as.includes(a);
           const okT  = matchTags(tg, selectedLower, modeVal);
 
-          return okKw && okA && okT;
+          const okImg = !onlyImg.checked || (Number(x.sample_image_count || 0) > 0);
+          const okMov = !onlyMov.checked || !!x.has_sample_movie;
+
+          return okKw && okA && okT && okImg && okMov;
         });
 
         filtered.sort((x,y)=> compareBySort(x,y,sortVal));
@@ -472,6 +521,15 @@
         const tagsHtml = (w.tags && w.tags.length)
           ? `<div class="tags">${w.tags.slice(0,8).map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>`
           : "";
+
+        const si = Number(w.sample_image_count || 0);
+        const sm = !!w.has_sample_movie;
+        const badges = (si || sm)
+          ? `<div class="badges" style="margin-top:10px;">
+               ${si ? `<span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>` : ""}
+               ${sm ? `<span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>` : ""}
+             </div>`
+          : "";
         const actions = `
           <div class="actions">
             <a class="btn secondary" href="${detailHref}">詳細を見る</a>
@@ -490,6 +548,7 @@
             ${date}
             ${actressesHtml}
             ${tagsHtml}
+            ${badges}
             ${actions}
           </div>
         `;
@@ -593,6 +652,9 @@
         // 人気タグは簡易集計
         const counts = {};
         for (const w of all){
+          // サンプル有無フィルタ
+          if (onlyImg.checked && !(Number(w.sample_image_count || 0) > 0)) continue;
+          if (onlyMov.checked && !w.has_sample_movie) continue;
           for (const t of (w.tags||[])){
             counts[t] = (counts[t]||0) + 1;
           }
@@ -626,6 +688,8 @@
       actress.addEventListener("change", () => applyFilters({resetRender:true}));
       mode.addEventListener("change", () => applyFilters({resetRender:true}));
       sort.addEventListener("change", () => applyFilters({resetRender:true}));
+      onlyImg.addEventListener("change", () => { updateToggleStyles(); applyFilters({resetRender:true}); });
+      onlyMov.addEventListener("change", () => { updateToggleStyles(); applyFilters({resetRender:true}); });
 
       // タグ入力：Enterで追加
       tagInput.addEventListener("keydown", (e) => {
@@ -646,6 +710,9 @@
         tagInput.value = "";
         mode.value = "or";
         sort.value = "new";
+        onlyImg.checked = false;
+        onlyMov.checked = false;
+        updateToggleStyles();
         applyFilters({resetRender:true});
         q.focus();
       });

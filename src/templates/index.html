@@ -156,6 +156,19 @@
               </div>
             {% endif %}
 
+	            {# サンプル有無（一覧でも分かるように） #}
+	            {% set si = (w.sample_images|length) if w.sample_images else 0 %}
+	            {% set mv = w.sample_movie or w.sample_movie_url %}
+	            {% if (not mv) and w.sample_movie_urls %}
+	              {% set mv = w.sample_movie_urls.size_720_480 or w.sample_movie_urls.size_644_414 or w.sample_movie_urls.size_560_360 or w.sample_movie_urls.size_476_306 %}
+	            {% endif %}
+	            {% if (si and si > 0) or mv %}
+	              <div class="badges" style="margin-top:10px;">
+	                {% if si and si > 0 %}<span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>{% endif %}
+	                {% if mv %}<span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>{% endif %}
+	              </div>
+	            {% endif %}
+
             <div class="actions">
               <a class="btn secondary" href="{{ detail_href }}">詳細を見る</a>
               {% if w.official_url %}

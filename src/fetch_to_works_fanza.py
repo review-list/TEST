@@ -129,6 +129,27 @@ def extract_actresses(item: dict) -> List[str]:
     return out
 
 
+
+def extract_first_iteminfo_name(item: dict, key: str) -> Optional[str]:
+    """iteminfo の maker/series/label などから最初の name を取り出す。
+
+    公式レスポンス例: iteminfo.maker = [{name: '...', id: '...'}, ...]
+    """
+    iteminfo = item.get('iteminfo') or {}
+    if not isinstance(iteminfo, dict):
+        return None
+    v = iteminfo.get(key) or []
+    if isinstance(v, dict):
+        v = [v]
+    if not isinstance(v, list):
+        return None
+    for it in v:
+        if isinstance(it, dict):
+            name = it.get('name')
+            if name:
+                return str(name).strip() or None
+    return None
+
 def extract_sample_images(item: dict) -> Tuple[List[str], List[str]]:
     """
     公式レスポンス例:
@@ -215,9 +236,6 @@ def extract_sample_movie_urls(item: dict) -> Tuple[Optional[str], Dict[str, str]
         if not isinstance(v, str):
             continue
         if k.startswith("size_") and v:
-            # http -> https 正規化（Mixed Content 回避）
-            if v.startswith("http://"):
-                v = "https://" + v[len("http://"): ]
             urls[k] = v
 
     prefer = ["size_720_480", "size_644_414", "size_560_360", "size_476_306"]
@@ -229,9 +247,6 @@ def extract_sample_movie_urls(item: dict) -> Tuple[Optional[str], Dict[str, str]
     if not best and urls:
         # 何か1つ
         best = next(iter(urls.values()))
-
-    if isinstance(best, str) and best.startswith("http://"):
-        best = "https://" + best[len("http://"): ]
 
     return best, urls
 
@@ -279,6 +294,10 @@ def normalize_item(item: dict) -> dict:
     tags = extract_genres(item)
     actresses = extract_actresses(item)
 
+    maker = extract_first_iteminfo_name(item, 'maker')
+    series = extract_first_iteminfo_name(item, 'series')
+    label = extract_first_iteminfo_name(item, 'label')
+
     sample_large, sample_small = extract_sample_images(item)
     sample_movie_best, sample_movie_urls = extract_sample_movie_urls(item)
 
@@ -291,6 +310,10 @@ def normalize_item(item: dict) -> dict:
         "release_date": release_date,
         "tags": tags,
         "actresses": actresses,
+        "maker": maker,
+        "series": series,
+        "label": label,
+
         "official_url": official_url,
         "hero_image": hero_image,
 
@@ -337,6 +360,12 @@ def needs_update(existing: Dict[str, Any], incoming: Dict[str, Any]) -> bool:
     if incoming.get("review") and not existing.get("review"):
         return True
     if incoming.get("prices") and not existing.get("prices"):
+        return True
+    if incoming.get("maker") and not existing.get("maker"):
+        return True
+    if incoming.get("series") and not existing.get("series"):
+        return True
+    if incoming.get("label") and not existing.get("label"):
         return True
     return False
 
