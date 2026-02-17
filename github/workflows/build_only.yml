@@ -1,0 +1,41 @@
+name: 🔧ビルドpyのみ実行（API取得なし）
+
+on:
+  workflow_dispatch:   # 手動実行専用
+  push:
+    paths:
+      - 'src/build.py'
+      - 'src/templates/**'
+      - 'src/data/works.json'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # ← 自動コミットに必要
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build site -> docs/
+        run: |
+          python src/build.py
+
+      - name: Commit & Push if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add docs
+          git diff --cached --quiet || git commit -m "auto: build only"
+          git push
