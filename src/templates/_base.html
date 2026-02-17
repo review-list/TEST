@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{% if page_title %}{{ page_title }} | {% endif %}{{ site_name }}</title>
+  <meta name="description" content="{{ description or '' }}" />
+  <link rel="stylesheet" href="{{ asset_prefix }}assets/style.css">
+  {% if search_enabled %}
+    <script defer src="{{ asset_prefix }}assets/search.js"></script>
+  {% endif %}
+</head>
+<body>
+  <header class="header">
+    <div class="header__inner">
+      <div class="brand">
+        <a class="brand__link" href="{{ home_link }}">{{ site_name }}</a>
+      </div>
+
+      <nav class="topnav" aria-label="サイトメニュー">
+        <a class="topnav__a" href="{{ home_link }}">作品</a>
+        <a class="topnav__a" href="{{ actresses_link }}">女優</a>
+        <a class="topnav__a" href="{{ genres_link }}">ジャンル</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main">
+    {% if breadcrumbs %}
+      <nav class="breadcrumbs" aria-label="パンくず">
+        {% for b in breadcrumbs %}
+          {% if not loop.first %}<span class="crumb__sep">›</span>{% endif %}
+          <a class="crumb" href="{{ b.href }}">{{ b.name }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+
+    <footer class="footer">
+      <div class="footer__inner">
+        <div class="footer__links">
+          <a href="{{ home_link }}">作品</a>
+          <a href="{{ actresses_link }}">女優</a>
+          <a href="{{ genres_link }}">ジャンル</a>
+          <a href="{{ asset_prefix }}sitemap.xml">sitemap</a>
+        </div>
+        <div class="footer__copy">© 2026 {{ site_name }}</div>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>
