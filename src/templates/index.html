@@ -1,250 +1,81 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="dark light" />
-  <title>{% if page_title %}{{ page_title }} - {{ site_name }}{% else %}{{ site_name }}{% endif %}</title>
-  <meta name="description" content="{{ page_description or (site_name ~ ' の作品一覧です。') }}" />
+{% extends "_base.html" %}
+{% block content %}
+<section class="container">
+  <div class="page-head">
+    <h1 class="page-title">{{ heading }}</h1>
 
-  {% if css_path %}
-    <link rel="stylesheet" href="{{ css_path }}">
+    {% if pager and pager.show_paging_link %}
+      <div class="top-paging-link">
+        <a class="muted-link" href="{{ root_path }}{{ pager.paging_href }}">作品一覧（ページング）を見る →</a>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if pager and pager.page %}
+  <div class="pager">
+    {% if pager.prev %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">← 前</span>
+    {% endif %}
+
+    <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
+
+    {% if pager.next %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">次 →</span>
+    {% endif %}
+  </div>
   {% endif %}
 
-  <style>
-    /* フィルタUI（共通CSSのダークテーマに合わせる） */
-    .controls{margin:14px 0 18px; display:grid; gap:10px;}
-    .controls .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
-    .controls input[type="search"], .controls select{
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.04);
-      color:var(--text);
-      min-width:220px;
-      outline:none;
-    }
-    .controls input[type="search"]::placeholder{color:rgba(148,163,184,.9)}
-    .controls button{
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.04);
-      color:var(--text);
-      cursor:pointer;
-      font-weight:800;
-    }
-    .controls button:hover{border-color:rgba(96,165,250,.55)}
-    .controls select option, .controls select optgroup{
-      background:#0b1220;
-      color:var(--text);
-    }
-    .count{color:var(--muted); font-size:14px; margin-left:auto;}
-    .is-hidden{ display:none !important; }
-  </style>
-
-  {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}" />{% endif %}
-  <meta property="og:site_name" content="{{ site_name }}" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="{% if page_title %}{{ page_title }} - {{ site_name }}{% else %}{{ site_name }}{% endif %}" />
-  <meta property="og:description" content="{{ page_description or (site_name ~ ' の作品一覧です。') }}" />
-  {% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}" />{% endif %}
-  {% if (works[0].hero_image if works and works|length>0 else None) %}<meta property="og:image" content="{{ (works[0].hero_image if works and works|length>0 else None) }}" />{% endif %}
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="{% if page_title %}{{ page_title }} - {{ site_name }}{% else %}{{ site_name }}{% endif %}" />
-  <meta name="twitter:description" content="{{ page_description or (site_name ~ ' の作品一覧です。') }}" />
-  {% if (works[0].hero_image if works and works|length>0 else None) %}<meta property="og:image" content="{{ (works[0].hero_image if works and works|length>0 else None) }}" />{% endif %}
-</head>
-
-<body>
-  <!-- 共通CSS（.header/.header-inner/.nav）に統一 -->
-  <header class="header">
-    <div class="container header-inner">
-      <div class="brand">
-        <a href="{{ home_href or './' }}"><strong>{{ site_name }}</strong></a>
-      </div>
-      <nav class="nav">
-        <a href="{{ home_href or './' }}">ホーム</a>
-        <a href="{{ actresses_href or 'actresses/' }}">女優</a>
-        <a href="{{ genres_href or 'genres/' }}">ジャンル</a>
-        <a href="{{ search_href or 'search/' }}">検索</a>
-      </nav>
-    </div>
-  </header>
-
-  <main class="container">
-    <section class="hero">
-      <h1>{% if page_title %}{{ page_title }}{% else %}作品一覧{% endif %}</h1>
-      <p>{% if page_description %}{{ page_description }}{% else %}{{ site_name }} の作品一覧です。{% endif %}</p>
-    </section>
-
-    {# ✅ トップだけに「ページング一覧」への小さい導線を置く #}
-    {% if not page_title %}
-      <div style="margin:-6px 0 12px;">
-        <a href="{{ pages_href }}" style="font-size:13px; color:var(--muted); text-decoration:none;">
-          作品一覧（ページング）を見る →
-        </a>
-      </div>
-    {% endif %}
-
-    <!-- ✅ 検索＆絞り込み（ページ内フィルタ） -->
-    <section class="controls" aria-label="検索と絞り込み">
-      <div class="row">
-        <input id="q" type="search" placeholder="タイトル / 女優 / タグで検索" autocomplete="off">
-        <select id="actress">
-          <option value="">女優（すべて）</option>
-          {% for a in (actresses_keys or []) %}
-            <option value="{{ a }}">{{ a }}</option>
-          {% endfor %}
-        </select>
-        <select id="tag">
-          <option value="">タグ（すべて）</option>
-          {% for g in (genres_keys or []) %}
-            <option value="{{ g }}">{{ g }}</option>
-          {% endfor %}
-        </select>
-        <button id="reset" type="button">リセット</button>
-
-        <div class="count">
-          <span id="shown">0</span> / <span id="total">0</span> 件
-        </div>
-      </div>
-    </section>
-
-    <!-- ✅ 一覧 -->
-    <section class="grid" id="works">
-      {% for w in works %}
-        {% set actress_text = (w.actresses or []) | join(' ') %}
-        {% set tag_text = (w.tags or []) | join(' ') %}
-        {% set detail_href = works_prefix ~ w.id ~ '/' %}
-
-        <article class="card work-item"
-          data-title="{{ (w.title or '') | lower }}"
-          data-actresses="{{ actress_text | lower }}"
-          data-tags="{{ tag_text | lower }}"
-        >
+  <div class="works-grid">
+    {% for w in works %}
+      <a class="work-card" href="{{ root_path }}works/{{ w.id }}/" aria-label="{{ w.title }}">
+        <div class="work-thumb">
           {% if w.hero_image %}
-            <a href="{{ detail_href }}" style="display:block;">
-              <img class="thumb" src="{{ w.hero_image }}" alt="{{ w.title }}" loading="lazy">
-            </a>
+            <img loading="lazy" src="{{ w.hero_image }}" alt="{{ w.title }}">
+          {% else %}
+            <div class="thumb-placeholder"></div>
           {% endif %}
-
-          <div class="pad">
-            <p class="title" style="margin:0 0 6px;">
-              <a href="{{ detail_href }}" style="color:inherit; text-decoration:none;">
-                {{ w.title }}
-              </a>
-            </p>
-
-            {% if w.release_date %}
-              <div class="meta">公開日：{{ w.release_date }}</div>
+          <div class="work-badges">
+            {% if w._has_img %}
+              <span class="badge badge-img">🖼️ サンプル画像あり</span>
             {% endif %}
-
-            {% if w.actresses %}
-              <div class="tags" style="margin-top:10px;">
-                {% for a in w.actresses %}
-                  <span class="tag">{{ a }}</span>
-                {% endfor %}
-              </div>
+            {% if w._has_mov %}
+              <span class="badge badge-mov">🎬 サンプル動画あり</span>
             {% endif %}
-
-            {% if w.tags %}
-              <div class="tags" style="margin-top:10px;">
-                {% for t in w.tags[:8] %}
-                  <span class="tag">{{ t }}</span>
-                {% endfor %}
-              </div>
-            {% endif %}
-
-	            {# サンプル有無（一覧でも分かるように） #}
-	            {% set si = (w.sample_images|length) if w.sample_images else 0 %}
-	            {% set mv = w.sample_movie or w.sample_movie_url %}
-	            {% if (not mv) and w.sample_movie_urls %}
-	              {% set mv = w.sample_movie_urls.size_720_480 or w.sample_movie_urls.size_644_414 or w.sample_movie_urls.size_560_360 or w.sample_movie_urls.size_476_306 %}
-	            {% endif %}
-	            {% if (si and si > 0) or mv %}
-	              <div class="badges" style="margin-top:10px;">
-	                {% if si and si > 0 %}<span class="badge sm on" title="サンプル画像あり">🖼️ サンプル画像あり</span>{% endif %}
-	                {% if mv %}<span class="badge sm on" title="サンプル動画あり">🎬 サンプル動画あり</span>{% endif %}
-	              </div>
-	            {% endif %}
-
-            <div class="actions">
-              <a class="btn secondary" href="{{ detail_href }}">詳細を見る</a>
-              {% if w.official_url %}
-                <a class="btn" href="{{ w.official_url }}" target="_blank" rel="noopener">公式ページを見る</a>
-              {% endif %}
-            </div>
           </div>
-        </article>
-      {% endfor %}
-    </section>
+        </div>
 
-    {% if total_pages and total_pages > 1 and page %}
-      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin: 8px 0 26px;">
-        {% if page > 1 %}
-          <a class="btn secondary" href="{{ '../' if page == 2 else ('../' ~ (page-1) ~ '/') }}">前へ</a>
-        {% endif %}
-        <span class="small" style="align-self:center;">{{ page }} / {{ total_pages }}</span>
-        {% if page < total_pages %}
-          <a class="btn secondary" href="{{ '../' ~ (page+1) ~ '/' }}">次へ</a>
-        {% endif %}
-      </div>
+        <div class="work-meta">
+          <div class="work-title">{{ w.title }}</div>
+          <div class="work-sub">
+            {% if w.release_date %}<span class="muted">{{ w.release_date }}</span>{% endif %}
+            {% if w.maker %}<span class="dot">•</span><span class="muted">{{ w.maker }}</span>{% endif %}
+            {% if w.series %}<span class="dot">•</span><span class="muted">{{ w.series }}</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+
+  {% if pager and pager.page %}
+  <div class="pager pager--bottom">
+    {% if pager.prev %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">← 前</span>
     {% endif %}
 
-    <div class="footer">© 2026 {{ site_name }}</div>
-  </main>
+    <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
 
-  <script>
-    (function(){
-      const q = document.getElementById("q");
-      const actress = document.getElementById("actress");
-      const tag = document.getElementById("tag");
-      const reset = document.getElementById("reset");
-
-      const items = Array.from(document.querySelectorAll(".work-item"));
-      const shownEl = document.getElementById("shown");
-      const totalEl = document.getElementById("total");
-
-      totalEl.textContent = String(items.length);
-
-      function norm(s){ return (s || "").toString().trim().toLowerCase(); }
-
-      function apply(){
-        const kw = norm(q.value);
-        const a = norm(actress.value);
-        const t = norm(tag.value);
-
-        let shown = 0;
-        for (const el of items){
-          const title = el.dataset.title || "";
-          const as = el.dataset.actresses || "";
-          const tags = el.dataset.tags || "";
-
-          const okKw = !kw || (title.includes(kw) || as.includes(kw) || tags.includes(kw));
-          const okA  = !a  || as.includes(a);
-          const okT  = !t  || tags.includes(t);
-
-          const ok = okKw && okA && okT;
-          el.classList.toggle("is-hidden", !ok);
-          if (ok) shown++;
-        }
-        shownEl.textContent = String(shown);
-      }
-
-      q.addEventListener("input", apply);
-      actress.addEventListener("change", apply);
-      tag.addEventListener("change", apply);
-      reset.addEventListener("click", function(){
-        q.value = "";
-        actress.value = "";
-        tag.value = "";
-        apply();
-        q.focus();
-      });
-
-      apply();
-    })();
-  </script>
-</body>
-</html>
+    {% if pager.next %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">次 →</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

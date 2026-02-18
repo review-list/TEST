@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
-import datetime
 import math
+import os
+import re
 import shutil
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
-from xml.sax.saxutils import escape as xml_escape
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -15,10 +16,12 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 # =============================
 # Paths
 # =============================
-ROOT = Path(__file__).resolve().parents[1]      # repo root
+ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-TEMPLATES = SRC / "templates"
+TEMPLATES_DIR = SRC / "templates"
 DATA_DIR = SRC / "data"
+ASSETS_SRC = SRC / "assets"
+
 OUT = ROOT / "docs"
 ASSETS_OUT = OUT / "assets"
 
@@ -26,24 +29,18 @@ WORKS_JSON = DATA_DIR / "works.json"
 
 
 # =============================
-# Template names
+# Config
 # =============================
-TPL_INDEX = "index.html"        # works grid page (home / pages / facet detail)
-TPL_PAGE = "page.html"          # work detail page
-TPL_LIST = "list_works.html"    # simple list page (facet index)
-TPL_SEARCH = "search.html"      # search page
+PER_PAGE = 60
+SEARCH_CHUNK_SIZE = 600
+RELATED_LIMIT = 12
+POPULAR_TAGS_COUNT = 30
+RSS_ITEMS = 50
 
 
 # =============================
 # Helpers
 # =============================
-
-def load_json(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"JSONが見つかりません: {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -58,157 +55,167 @@ def write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def ensure_trailing_slash(u: str) -> str:
-    u = (u or "").strip()
-    if not u:
-        return ""
-    return u if u.endswith("/") else (u + "/")
+def load_json(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"JSONが見つかりません: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def guess_site_url(data: Dict[str, Any]) -> str:
-    # works.json の site_url を優先（カスタムドメイン対応）
-    site_url = str(data.get("site_url") or "").strip()
-    if site_url:
-        return ensure_trailing_slash(site_url)
-
-    # GitHub Pages 推測（Actions上で有効）
-    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()  # "owner/repo"
-    if repo and "/" in repo:
-        owner, name = repo.split("/", 1)
-        # user/organization pages（repo名が owner.github.io）
-        if name.lower() == f"{owner.lower()}.github.io":
-            return f"https://{owner}.github.io/"
-        return f"https://{owner}.github.io/{name}/"
-
-    # ローカル実行では空（sitemap/RSSは生成しない）
-    return ""
-
-
-def abs_url(base: str, rel: str) -> str:
-    base = ensure_trailing_slash(base)
-    rel = (rel or "").lstrip("/")
-    return base + rel
-
-
-def write_robots_txt(out_dir: Path, base_url: str) -> None:
-    lines = [
-        "User-agent: *",
-        "Allow: /",
-    ]
-    if base_url:
-        lines.append(f"Sitemap: {abs_url(base_url, 'sitemap.xml')}")
-    write_text(out_dir / "robots.txt", "\n".join(lines) + "\n")
-
-
-def write_sitemap_xml(out_dir: Path, base_url: str, rel_urls: List[str], lastmod_date: str) -> None:
-    # base_url が無い場合は absolute URL を作れないので生成しない
-    if not base_url:
-        return
-    urlset = []
-    for rel in rel_urls:
-        loc = abs_url(base_url, rel)
-        if not loc.endswith("/") and not loc.endswith(".html"):
-            loc += "/"
-        urlset.append(
-            f"  <url><loc>{xml_escape(loc)}</loc><lastmod>{lastmod_date}</lastmod></url>"
-        )
-    xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
-        + "\n".join(urlset)
-        + "\n</urlset>\n"
-    )
-    write_text(out_dir / "sitemap.xml", xml)
-
-
-def write_rss_feed(out_dir: Path, base_url: str, site_name: str, works_sorted: List[Dict[str, Any]], max_items: int = 50) -> None:
-    if not base_url:
-        return
-
-    items_xml = []
-    for w in works_sorted[:max_items]:
-        wid = w.get("id")
-        if not wid:
-            continue
-        link = abs_url(base_url, f"works/{wid}/")
-        title = xml_escape(w.get("title") or "")
-        desc = xml_escape((w.get("description") or w.get("title") or "")[:500])
-        pub = xml_escape(w.get("release_date") or "")
-        items_xml.append(
-            f"<item><title>{title}</title><link>{xml_escape(link)}</link><guid>{xml_escape(link)}</guid>"
-            f"<description>{desc}</description><pubDate>{pub}</pubDate></item>"
-        )
-
-    channel = (
-        f"<channel><title>{xml_escape(site_name)}</title>"
-        f"<link>{xml_escape(base_url)}</link>"
-        f"<description>{xml_escape(site_name)} の新着作品</description>"
-        + "".join(items_xml)
-        + "</channel>"
-    )
-    rss = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + f"<rss version=\"2.0\">{channel}</rss>\n"
-    write_text(out_dir / "feed.xml", rss)
-
-
-def slugify_simple(s: str) -> str:
+def slugify(s: str) -> str:
     s = (s or "").strip()
+    if not s:
+        return "unknown"
     for ch in ['\\', '/', ':', '*', '?', '"', '<', '>', '|']:
         s = s.replace(ch, "_")
     s = s.replace(" ", "_")
-    return s or "unknown"
+    s = re.sub(r"_+", "_", s)
+    return s[:120]
 
 
-def parse_release_date_sort_key(s: str) -> str:
-    return (s or "").replace("/", "-").replace("  ", " ").strip()
+def clean_list(xs: Any) -> List[str]:
+    if not isinstance(xs, list):
+        return []
+    out: List[str] = []
+    for x in xs:
+        t = str(x).strip()
+        if t:
+            out.append(t)
+    return out
 
 
-def parse_release_date_iso(s: str) -> Optional[str]:
-    """release_date を可能な範囲で ISO 8601 (YYYY-MM-DD) に寄せる。"""
+def safe_https(url: str | None) -> str | None:
+    if not url:
+        return None
+    url = str(url).strip()
+    if url.startswith("http://"):
+        return "https://" + url[len("http://") :]
+    return url
+
+
+def parse_dt(s: str) -> Optional[datetime]:
+    """
+    '2012/8/3 10:00' / '2026-02-13 10:00:00' / '2026-02-13'
+    などをできるだけ datetime に変換。
+    """
     s = (s or "").strip()
     if not s:
         return None
+    s = s.replace("/", "-").replace("  ", " ")
 
-    # よくある形式: 2012/8/3 10:00
-    for fmt in ("%Y/%m/%d %H:%M", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+    # YYYY-MM-DD HH:MM(:SS)?
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?", s)
+    if not m:
+        return None
+    y = int(m.group(1))
+    mo = int(m.group(2))
+    d = int(m.group(3))
+    hh = int(m.group(4) or 0)
+    mm = int(m.group(5) or 0)
+    ss = int(m.group(6) or 0)
+    try:
+        return datetime(y, mo, d, hh, mm, ss)
+    except Exception:
+        return None
+
+
+def dt_sort_key(w: Dict[str, Any]) -> Tuple[int, str]:
+    dt = parse_dt(str(w.get("release_date") or ""))
+    if dt:
+        return (1, dt.isoformat())
+    return (0, "")
+
+
+def get_base_url(data: Dict[str, Any]) -> str:
+    """
+    sitemap/OGP/canonical 用の base_url。
+    優先: 環境変数 SITE_URL > works.json の site_url/base_url > GitHub Pages 推測
+    """
+    base = (os.getenv("SITE_URL") or "").strip()
+    if not base:
+        base = (data.get("site_url") or data.get("base_url") or "").strip()
+    if not base:
+        repo = (os.getenv("GITHUB_REPOSITORY") or "").strip()  # owner/repo
+        if repo and "/" in repo:
+            owner, repo_name = repo.split("/", 1)
+            base = f"https://{owner}.github.io/{repo_name}/"
+    if base and not base.endswith("/"):
+        base += "/"
+    return base
+
+
+def rel(depth: int, path: str) -> str:
+    return ("../" * depth) + path
+
+
+def page_depth(path_from_docs_root: str) -> int:
+    """
+    docs 直下からの相対パス（例: 'works/xxx/'）を渡すと、階層の深さを返す。
+    '' (index) -> 0
+    'pages/1/' -> 2? 実際ファイルは pages/1/index.html なので深さ=2
+    """
+    p = path_from_docs_root.strip("/")
+    if not p:
+        return 0
+    return len(p.split("/"))
+
+
+def unique_keep_order(items: Iterable[str]) -> List[str]:
+    seen: Set[str] = set()
+    out: List[str] = []
+    for x in items:
+        if x and x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def has_sample_images(w: Dict[str, Any]) -> bool:
+    return bool(w.get("sample_images_large") or w.get("sample_images_small"))
+
+
+def sample_images_count(w: Dict[str, Any]) -> int:
+    xs = w.get("sample_images_large") or w.get("sample_images_small") or []
+    return len(xs) if isinstance(xs, list) else 0
+
+
+def has_sample_movie(w: Dict[str, Any]) -> bool:
+    return bool(w.get("sample_movie"))
+
+
+def best_sample_images_for_lightbox(w: Dict[str, Any]) -> List[str]:
+    xs = w.get("sample_images_large") or w.get("sample_images_small") or []
+    return [x for x in xs if isinstance(x, str) and x.strip()]
+
+
+def best_sample_images_for_grid(w: Dict[str, Any]) -> List[str]:
+    xs = w.get("sample_images_small") or w.get("sample_images_large") or []
+    return [x for x in xs if isinstance(x, str) and x.strip()]
+
+
+def video_aspect_ratio(w: Dict[str, Any]) -> str:
+    """
+    sample_movie_size があればそこから推定。無ければ 16/9。
+    """
+    size = w.get("sample_movie_size")
+    if isinstance(size, dict):
         try:
-            dt = datetime.datetime.strptime(s, fmt)
-            # datePublished は日付だけでもOK
-            return dt.date().isoformat()
+            ww = int(size.get("w"))
+            hh = int(size.get("h"))
+            if ww > 0 and hh > 0:
+                return f"{ww} / {hh}"
         except Exception:
             pass
-
-    # 先頭10文字が YYYY-MM-DD なら採用
-    if len(s) >= 10 and s[4] in "-/" and s[7] in "-/":
-        x = s[:10].replace("/", "-")
-        # 簡易チェック
-        try:
-            datetime.date.fromisoformat(x)
-            return x
-        except Exception:
-            return None
-
-    return None
+    # URLに size=720_480 が入ることが多いので、そこからも推定
+    u = str(w.get("sample_movie") or "")
+    m = re.search(r"size=(\d+)_(\d+)", u)
+    if m:
+        return f"{int(m.group(1))} / {int(m.group(2))}"
+    return "16 / 9"
 
 
-def pick_name(v: Any) -> Optional[str]:
-    """maker/series/label などの形揺れを吸収して name を返す。"""
-    if v is None:
-        return None
-    if isinstance(v, str):
-        vv = v.strip()
-        return vv or None
-    if isinstance(v, dict):
-        name = v.get("name")
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-    if isinstance(v, list):
-        for it in v:
-            n = pick_name(it)
-            if n:
-                return n
-    return None
-
-
+# =============================
+# Normalize works
+# =============================
 def normalize_work(w: Dict[str, Any]) -> Dict[str, Any]:
     ww = dict(w or {})
     ww["id"] = str(ww.get("id") or "").strip()
@@ -216,639 +223,671 @@ def normalize_work(w: Dict[str, Any]) -> Dict[str, Any]:
     ww["description"] = str(ww.get("description") or ww["title"] or "").strip()
     ww["release_date"] = str(ww.get("release_date") or "").strip()
 
-    ww["hero_image"] = ww.get("hero_image") or None
-    ww["official_url"] = ww.get("official_url") or ww.get("affiliate_url") or ww.get("affiliateURL") or ww.get("URL") or None
+    ww["tags"] = clean_list(ww.get("tags"))
+    ww["actresses"] = clean_list(ww.get("actresses"))
 
-    ww["tags"] = [str(x).strip() for x in (ww.get("tags") or []) if str(x).strip()]
-    ww["actresses"] = [str(x).strip() for x in (ww.get("actresses") or []) if str(x).strip()]
+    ww["hero_image"] = safe_https(ww.get("hero_image"))
+    ww["official_url"] = ww.get("official_url") or ww.get("affiliate_url") or ww.get("affiliateURL") or ww.get("URL") or ww.get("url")
+    ww["official_url"] = safe_https(ww["official_url"]) if isinstance(ww["official_url"], str) else ww["official_url"]
 
-    ww["sample_images"] = [str(x).strip() for x in (ww.get("sample_images") or []) if str(x).strip()]
-    ww["sample_movie"] = str(ww.get("sample_movie") or ww.get("sample_movie_url") or "").strip() or None
-    if not isinstance(ww.get("sample_movie_urls"), dict):
+    ww["maker"] = str(ww.get("maker") or "").strip()
+    ww["series"] = str(ww.get("series") or "").strip()
+    ww["label"] = str(ww.get("label") or "").strip()
+
+    ww["sample_images_small"] = clean_list(ww.get("sample_images_small"))
+    ww["sample_images_large"] = clean_list(ww.get("sample_images_large"))
+
+    ww["sample_movie"] = safe_https(ww.get("sample_movie"))
+    if isinstance(ww.get("sample_movie_urls"), dict):
+        ww["sample_movie_urls"] = {k: safe_https(v) for k, v in ww["sample_movie_urls"].items() if isinstance(k, str) and isinstance(v, str)}
+    else:
         ww["sample_movie_urls"] = {}
 
-    if not isinstance(ww.get("review"), dict):
-        ww["review"] = {}
-    if not isinstance(ww.get("prices"), dict):
-        ww["prices"] = {}
+    # numbers
+    ww["api_rank"] = ww.get("api_rank")
+    try:
+        ww["api_rank"] = int(ww["api_rank"]) if ww["api_rank"] is not None else None
+    except Exception:
+        ww["api_rank"] = None
 
-    ww["volume"] = ww.get("volume")
+    ww["review_count"] = ww.get("review_count")
+    try:
+        ww["review_count"] = int(ww["review_count"]) if ww["review_count"] is not None else None
+    except Exception:
+        ww["review_count"] = None
 
-    # 追加のファセット（無い場合は None）
-    ww["maker"] = pick_name(ww.get("maker"))
-    ww["series"] = pick_name(ww.get("series"))
-    ww["label"] = pick_name(ww.get("label"))
+    ww["review_average"] = ww.get("review_average")
+    try:
+        ww["review_average"] = float(ww["review_average"]) if ww["review_average"] is not None else None
+    except Exception:
+        ww["review_average"] = None
 
+    ww["price_min"] = ww.get("price_min")
+    try:
+        ww["price_min"] = int(ww["price_min"]) if ww["price_min"] is not None else None
+    except Exception:
+        ww["price_min"] = None
+
+    # computed flags for templates
+    ww["_has_img"] = has_sample_images(ww)
+    ww["_img_count"] = sample_images_count(ww)
+    ww["_has_mov"] = has_sample_movie(ww)
+    ww["_dt"] = parse_dt(ww["release_date"])
     return ww
 
 
-def build_facets(works: List[Dict[str, Any]]):
-    actresses: Dict[str, List[Dict[str, Any]]] = {}
-    genres: Dict[str, List[Dict[str, Any]]] = {}
-    makers: Dict[str, List[Dict[str, Any]]] = {}
-    series: Dict[str, List[Dict[str, Any]]] = {}
-
+# =============================
+# Index builders
+# =============================
+def index_by_key(works: List[Dict[str, Any]], key: str) -> Dict[str, List[Dict[str, Any]]]:
+    out: Dict[str, List[Dict[str, Any]]] = {}
     for w in works:
-        for a in (w.get("actresses") or []):
-            actresses.setdefault(a, []).append(w)
-        for g in (w.get("tags") or []):
-            genres.setdefault(g, []).append(w)
-        mk = w.get("maker")
-        if mk:
-            makers.setdefault(mk, []).append(w)
-        se = w.get("series")
-        if se:
-            series.setdefault(se, []).append(w)
+        v = str(w.get(key) or "").strip()
+        if v:
+            out.setdefault(v, []).append(w)
+    return out
 
-    actresses_keys = sorted(actresses.keys(), key=lambda s: s.lower())
-    genres_keys = sorted(genres.keys(), key=lambda s: s.lower())
-    makers_keys = sorted(makers.keys(), key=lambda s: s.lower())
-    series_keys = sorted(series.keys(), key=lambda s: s.lower())
 
-    return actresses, actresses_keys, genres, genres_keys, makers, makers_keys, series, series_keys
+def index_by_list_field(works: List[Dict[str, Any]], field: str) -> Dict[str, List[Dict[str, Any]]]:
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for w in works:
+        for v in w.get(field) or []:
+            vv = str(v).strip()
+            if vv:
+                out.setdefault(vv, []).append(w)
+    return out
+
+
+def sort_works_newest(xs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return sorted(xs, key=lambda w: (w["_dt"] is not None, w["_dt"] or datetime.min), reverse=True)
+
+
+def compute_related(works: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    """
+    id -> { actress: [...], genre: [...], maker: [...], series: [...] }
+    """
+    by_actress = index_by_list_field(works, "actresses")
+    by_genre = index_by_list_field(works, "tags")
+    by_maker = index_by_key(works, "maker")
+    by_series = index_by_key(works, "series")
+
+    relmap: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+    for w in works:
+        wid = w["id"]
+        used: Set[str] = {wid}
+
+        def pick(src: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+            out: List[Dict[str, Any]] = []
+            for cand in sort_works_newest(src):
+                cid = cand["id"]
+                if cid in used:
+                    continue
+                out.append(cand)
+                used.add(cid)
+                if len(out) >= limit:
+                    break
+            return out
+
+        # related actress: まず1人目の女優を優先
+        actress_list = w.get("actresses") or []
+        ra: List[Dict[str, Any]] = []
+        if actress_list:
+            ra = pick(by_actress.get(actress_list[0], []), RELATED_LIMIT)
+
+        # related series/maker/genre は重複を避けつつ追加
+        rm: List[Dict[str, Any]] = []
+        if w.get("maker"):
+            rm = pick(by_maker.get(w["maker"], []), RELATED_LIMIT)
+
+        rs: List[Dict[str, Any]] = []
+        if w.get("series"):
+            rs = pick(by_series.get(w["series"], []), RELATED_LIMIT)
+
+        rg: List[Dict[str, Any]] = []
+        # 代表ジャンル（先頭）で1ブロック作る
+        tags = w.get("tags") or []
+        if tags:
+            rg = pick(by_genre.get(tags[0], []), RELATED_LIMIT)
+
+        relmap[wid] = {"actress": ra, "maker": rm, "series": rs, "genre": rg}
+    return relmap
 
 
 # =============================
-# Search index (lightweight)
+# Search index (chunk + manifest)
 # =============================
+def build_search_index(works_sorted: List[Dict[str, Any]]) -> None:
+    ensure_dir(ASSETS_OUT)
 
-def make_search_index(works_sorted: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+    cards: List[Dict[str, Any]] = []
+    tag_counts: Dict[str, int] = {}
+    actress_counts: Dict[str, int] = {}
+    maker_counts: Dict[str, int] = {}
+    series_counts: Dict[str, int] = {}
+
     for w in works_sorted:
         wid = w.get("id")
         if not wid:
             continue
 
-        # サンプル有無（検索/一覧でバッジ表示用）
-        si = len(w.get("sample_images") or [])
-        sm = bool(w.get("sample_movie"))
-        if (not sm) and isinstance(w.get("sample_movie_urls"), dict):
-            d = w.get("sample_movie_urls") or {}
-            sm = bool(d.get("size_720_480") or d.get("size_644_414") or d.get("size_560_360") or d.get("size_476_306"))
+        tags = w.get("tags") or []
+        for t in tags:
+            tag_counts[t] = tag_counts.get(t, 0) + 1
 
-        out.append(
+        actresses = w.get("actresses") or []
+        for a in actresses:
+            actress_counts[a] = actress_counts.get(a, 0) + 1
+
+        maker = (w.get("maker") or "").strip()
+        if maker:
+            maker_counts[maker] = maker_counts.get(maker, 0) + 1
+
+        series = (w.get("series") or "").strip()
+        if series:
+            series_counts[series] = series_counts.get(series, 0) + 1
+
+        cards.append(
             {
                 "id": wid,
                 "title": w.get("title") or "",
                 "release_date": w.get("release_date") or "",
-                "hero_image": w.get("hero_image") or None,
-                "official_url": w.get("official_url") or None,
-                "actresses": w.get("actresses") or [],
-                "tags": w.get("tags") or [],
-                # 追加（今後の絞り込み用）
-                "maker": w.get("maker") or None,
-                "series": w.get("series") or None,
-                # フラグ
-                "sample_image_count": si,
-                "has_sample_movie": sm,
+                "hero_image": w.get("hero_image") or "",
+                "path": f"works/{wid}/",
+                "tags": tags,
+                "actresses": actresses,
+                "maker": maker,
+                "series": series,
+                "has_img": bool(w.get("_has_img")),
+                "img_count": int(w.get("_img_count") or 0),
+                "has_mov": bool(w.get("_has_mov")),
+                "api_rank": w.get("api_rank"),
             }
         )
-    return out
 
-
-def count_top(items: List[str], top_n: int = 30):
-    d: Dict[str, int] = {}
-    for x in items:
-        if not x:
-            continue
-        d[x] = d.get(x, 0) + 1
-    top = sorted(d.items(), key=lambda t: (-t[1], t[0].lower()))[:top_n]
-    return d, top
-
-
-def write_search_index_chunks(
-    works_sorted: List[Dict[str, Any]],
-    out_assets_dir: Path,
-    actresses_keys: List[str],
-    genres_keys: List[str],
-    makers_keys: List[str],
-    series_keys: List[str],
-    chunk_size: int = 2000,
-) -> None:
-    """検索用 index を chunk+manifest で出力。"""
-    search_index = make_search_index(works_sorted)
-
-    # 互換用（小～中規模向け）
-    write_json(out_assets_dir / "works_index.json", search_index)
-
-    chunks = [search_index[i : i + chunk_size] for i in range(0, len(search_index), chunk_size)]
-
-    chunk_files = []
-    for i, ch in enumerate(chunks):
+    # chunking
+    chunks: List[Dict[str, Any]] = []
+    total = len(cards)
+    n_chunks = math.ceil(total / SEARCH_CHUNK_SIZE) if total else 0
+    for i in range(n_chunks):
+        chunk_cards = cards[i * SEARCH_CHUNK_SIZE : (i + 1) * SEARCH_CHUNK_SIZE]
         fname = f"works_index_{i:03d}.json"
-        write_json(out_assets_dir / fname, ch)
-        chunk_files.append(fname)
+        write_json(ASSETS_OUT / fname, chunk_cards)
+        chunks.append({"file": fname, "count": len(chunk_cards)})
 
-    # 人気TOP
-    all_tags: List[str] = []
-    all_actresses: List[str] = []
-    all_makers: List[str] = []
-    all_series: List[str] = []
-    for w in works_sorted:
-        all_tags += (w.get("tags") or [])
-        all_actresses += (w.get("actresses") or [])
-        if w.get("maker"):
-            all_makers.append(w.get("maker"))
-        if w.get("series"):
-            all_series.append(w.get("series"))
-
-    tag_count, top_tags = count_top(all_tags, top_n=30)
-    actress_count, top_actresses = count_top(all_actresses, top_n=30)
-    maker_count, top_makers = count_top(all_makers, top_n=30)
-    series_count, top_series = count_top(all_series, top_n=30)
-
+    popular_tags = sorted(tag_counts.items(), key=lambda kv: kv[1], reverse=True)[:POPULAR_TAGS_COUNT]
     manifest = {
-        "total": len(search_index),
-        "chunk_size": chunk_size,
-        "chunks": chunk_files,
-        "all_tags": genres_keys,
-        "all_actresses": actresses_keys,
-        "top_tags": [{"name": k, "count": v} for k, v in top_tags],
-        "top_actresses": [{"name": k, "count": v} for k, v in top_actresses],
-        # 追加（将来拡張用）
-        "all_makers": makers_keys,
-        "all_series": series_keys,
-        "top_makers": [{"name": k, "count": v} for k, v in top_makers],
-        "top_series": [{"name": k, "count": v} for k, v in top_series],
+        "version": 2,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "total": total,
+        "chunk_size": SEARCH_CHUNK_SIZE,
+        "chunks": chunks,
+        "popular_tags": [{"name": k, "count": v} for k, v in popular_tags],
+        "tags": sorted(tag_counts.keys(), key=lambda s: s.lower()),
+        "actresses": sorted(actress_counts.keys(), key=lambda s: s.lower()),
+        "makers": sorted(maker_counts.keys(), key=lambda s: s.lower()),
+        "series": sorted(series_counts.keys(), key=lambda s: s.lower()),
     }
-    write_json(out_assets_dir / "works_index_manifest.json", manifest)
+    write_json(ASSETS_OUT / "works_index_manifest.json", manifest)
+
+    # compat: single file (small sites)
+    if total <= SEARCH_CHUNK_SIZE:
+        write_json(ASSETS_OUT / "works_index.json", cards)
 
 
 # =============================
-# Structured data (JSON-LD)
+# Assets
 # =============================
+def copy_assets() -> None:
+    ensure_dir(ASSETS_OUT)
+    if ASSETS_SRC.exists():
+        for p in ASSETS_SRC.rglob("*"):
+            if p.is_file():
+                relp = p.relative_to(ASSETS_SRC)
+                dest = ASSETS_OUT / relp
+                ensure_dir(dest.parent)
+                shutil.copyfile(p, dest)
 
-def build_jsonld_for_work(base_url: str, w: Dict[str, Any]) -> Optional[str]:
+
+# =============================
+# Sitemap / Robots / RSS
+# =============================
+def build_sitemap(base_url: str, urls: List[str]) -> None:
+    """
+    urls: docs ルートからの相対パス（例: 'works/xxx/'）
+    """
     if not base_url:
-        return None
+        # base_url が無いと sitemap の loc を作れないので、雛形だけ出す
+        write_text(OUT / "sitemap.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- SITE_URL が未設定のため loc を生成できません -->\n")
+        return
 
-    wid = w.get("id")
-    if not wid:
-        return None
+    lines = [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">",
+    ]
+    for u in urls:
+        loc = base_url + u.lstrip("/")
+        lines.append("  <url>")
+        lines.append(f"    <loc>{loc}</loc>")
+        lines.append("  </url>")
+    lines.append("</urlset>\n")
+    write_text(OUT / "sitemap.xml", "\n".join(lines))
 
-    url = abs_url(base_url, f"works/{wid}/")
-    title = w.get("title") or ""
-    desc = (w.get("description") or title or "")[:1200]
 
-    date_iso = parse_release_date_iso(w.get("release_date") or "")
+def build_robots(base_url: str) -> None:
+    lines = [
+        "User-agent: *",
+        "Disallow:",
+    ]
+    if base_url:
+        lines.append(f"Sitemap: {base_url}sitemap.xml")
+    write_text(OUT / "robots.txt", "\n".join(lines) + "\n")
 
-    graph: List[Dict[str, Any]] = []
 
-    # Breadcrumb
-    graph.append(
-        {
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-                {"@type": "ListItem", "position": 1, "name": "ホーム", "item": abs_url(base_url, "")},
-                {"@type": "ListItem", "position": 2, "name": "作品一覧", "item": abs_url(base_url, "pages/1/")},
-                {"@type": "ListItem", "position": 3, "name": title, "item": url},
-            ],
-        }
-    )
+def build_rss(base_url: str, site_name: str, works_sorted: List[Dict[str, Any]]) -> None:
+    if not base_url:
+        return
+    items = works_sorted[:RSS_ITEMS]
+    now = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
 
-    # Work object（サンプル動画があれば VideoObject に寄せる）
-    has_movie = bool(w.get("sample_movie"))
-    if (not has_movie) and isinstance(w.get("sample_movie_urls"), dict):
-        d = w.get("sample_movie_urls") or {}
-        has_movie = bool(d.get("size_720_480") or d.get("size_644_414") or d.get("size_560_360") or d.get("size_476_306"))
+    def esc(s: str) -> str:
+        return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    if has_movie:
-        obj: Dict[str, Any] = {
-            "@type": "VideoObject",
-            "name": title,
-            "description": desc,
-            "url": url,
-        }
-        if date_iso:
-            obj["datePublished"] = date_iso
-        if w.get("hero_image"):
-            obj["thumbnailUrl"] = w.get("hero_image")
-
-        # duration: volume が int なら minutes とみなす
-        vol = w.get("volume")
-        if isinstance(vol, int) and vol > 0:
-            obj["duration"] = f"PT{vol}M"
-
-        # actor
-        acts = w.get("actresses") or []
-        if acts:
-            obj["actor"] = [{"@type": "Person", "name": a} for a in acts[:20]]
-
-        # genre
-        tags = w.get("tags") or []
-        if tags:
-            obj["genre"] = tags[:30]
-
-        graph.append(obj)
-    else:
-        obj2: Dict[str, Any] = {
-            "@type": "CreativeWork",
-            "name": title,
-            "description": desc,
-            "url": url,
-        }
-        if date_iso:
-            obj2["datePublished"] = date_iso
-        if w.get("hero_image"):
-            obj2["image"] = w.get("hero_image")
-        tags = w.get("tags") or []
-        if tags:
-            obj2["keywords"] = tags[:30]
-        graph.append(obj2)
-
-    root = {"@context": "https://schema.org", "@graph": graph}
-    return json.dumps(root, ensure_ascii=False)
+    parts = [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<rss version=\"2.0\">",
+        "<channel>",
+        f"<title>{esc(site_name)}</title>",
+        f"<link>{base_url}</link>",
+        f"<description>{esc(site_name)} - Latest updates</description>",
+        f"<lastBuildDate>{now}</lastBuildDate>",
+    ]
+    for w in items:
+        wid = w["id"]
+        link = base_url + f"works/{wid}/"
+        title = esc(w.get("title") or "")
+        desc = esc((w.get("description") or "")[:180])
+        parts += [
+            "<item>",
+            f"<title>{title}</title>",
+            f"<link>{link}</link>",
+            f"<guid>{link}</guid>",
+            f"<description>{desc}</description>",
+            "</item>",
+        ]
+    parts += ["</channel>", "</rss>\n"]
+    write_text(OUT / "feed.xml", "\n".join(parts))
 
 
 # =============================
-# Main
+# Main build
 # =============================
-
 def main() -> None:
     data = load_json(WORKS_JSON)
-    site_name = str(data.get("site_name") or "Review Catalog")
-    base_url = guess_site_url(data)
+    site_name = data.get("site_name", "Catalog")
 
-    # reset output
+    base_url = get_base_url(data)
+
+    works_raw = data.get("works") or []
+    works = [normalize_work(w) for w in works_raw if isinstance(w, dict) and str(w.get("id") or "").strip()]
+    works_sorted = sort_works_newest(works)
+
+    # indexes
+    by_actress = index_by_list_field(works, "actresses")
+    by_genre = index_by_list_field(works, "tags")
+    by_maker = index_by_key(works, "maker")
+    by_series = index_by_key(works, "series")
+
+    actresses_keys = sorted(by_actress.keys(), key=lambda s: s.lower())
+    genres_keys = sorted(by_genre.keys(), key=lambda s: s.lower())
+    makers_keys = sorted(by_maker.keys(), key=lambda s: s.lower())
+    series_keys = sorted(by_series.keys(), key=lambda s: s.lower())
+
+    # related map
+    relmap = compute_related(works)
+
+    # templates
+    env = Environment(
+        loader=FileSystemLoader(str(TEMPLATES_DIR)),
+        autoescape=select_autoescape(["html", "xml"]),
+    )
+
+    env.filters['slugify'] = slugify
+
+    tpl_index = env.get_template("index.html")
+    tpl_list = env.get_template("list_works.html")
+    tpl_page = env.get_template("page.html")
+    tpl_search = env.get_template("search.html")
+    tpl_featured = env.get_template("featured.html")
+
+    # clean docs (keep assets? rebuild all)
     if OUT.exists():
         shutil.rmtree(OUT)
     ensure_dir(OUT)
     ensure_dir(ASSETS_OUT)
 
-    # copy css (src/assets/style.css -> docs/assets/style.css)
-    src_css = SRC / "assets" / "style.css"
-    if src_css.exists():
-        shutil.copy2(src_css, ASSETS_OUT / "style.css")
+    copy_assets()
+    build_search_index(works_sorted)
 
-    env = Environment(
-        loader=FileSystemLoader(str(TEMPLATES)),
-        autoescape=select_autoescape(["html", "xml"]),
+    # collect URLs for sitemap
+    sitemap_urls: List[str] = []
+
+    def render_index(
+        out_dir: Path,
+        *,
+        page_title: str,
+        heading: str,
+        works_list: List[Dict[str, Any]],
+        path_from_root: str,
+        pager: Optional[Dict[str, Any]] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        depth = page_depth(path_from_root)
+        root_path = "../" * depth
+        css_path = rel(depth, "assets/style.css")
+        html = tpl_index.render(
+            site_name=site_name,
+            base_url=base_url,
+            canonical_url=(base_url + path_from_root) if base_url else "",
+            page_title=page_title,
+            heading=heading,
+            works=works_list,
+            css_path=css_path,
+            root_path=root_path,
+            nav_active=(extra or {}).get("nav_active", ""),
+            pager=pager,
+        )
+        write_text(out_dir / "index.html", html)
+        sitemap_urls.append(path_from_root)
+
+    def render_list(
+        out_dir: Path,
+        *,
+        page_title: str,
+        heading: str,
+        items: List[Dict[str, str]],
+        path_from_root: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        depth = page_depth(path_from_root)
+        root_path = "../" * depth
+        css_path = rel(depth, "assets/style.css")
+        html = tpl_list.render(
+            site_name=site_name,
+            base_url=base_url,
+            canonical_url=(base_url + path_from_root) if base_url else "",
+            page_title=page_title,
+            heading=heading,
+            items=items,
+            css_path=css_path,
+            root_path=root_path,
+            nav_active=(extra or {}).get("nav_active", ""),
+        )
+        write_text(out_dir / "index.html", html)
+        sitemap_urls.append(path_from_root)
+
+    def render_page(
+        out_dir: Path,
+        *,
+        w: Dict[str, Any],
+        path_from_root: str,
+    ) -> None:
+        depth = page_depth(path_from_root)
+        root_path = "../" * depth
+        css_path = rel(depth, "assets/style.css")
+
+        # lightbox images: hero -> samples(large)
+        hero = w.get("hero_image") or ""
+        samples = best_sample_images_for_lightbox(w)
+        lightbox = unique_keep_order([hero] + samples) if hero else unique_keep_order(samples)
+        grid = best_sample_images_for_grid(w)
+
+        rels = relmap.get(w["id"], {})
+        html = tpl_page.render(
+            site_name=site_name,
+            base_url=base_url,
+            canonical_url=(base_url + path_from_root) if base_url else "",
+            page_title=w.get("title") or "",
+            css_path=css_path,
+            root_path=root_path,
+            nav_active="",
+            w=w,
+            lightbox_images=lightbox,
+            grid_images=grid,
+            video_aspect_ratio=video_aspect_ratio(w),
+            related_actress=rels.get("actress", []),
+            related_genre=rels.get("genre", []),
+            related_maker=rels.get("maker", []),
+            related_series=rels.get("series", []),
+        )
+        write_text(out_dir / "index.html", html)
+        sitemap_urls.append(path_from_root)
+
+    def render_search() -> None:
+        path_from_root = "search/"
+        depth = page_depth(path_from_root)
+        root_path = "../" * depth
+        css_path = rel(depth, "assets/style.css")
+        js_path = rel(depth, "assets/search.js")
+        manifest_path = rel(depth, "assets/works_index_manifest.json")
+        html = tpl_search.render(
+            site_name=site_name,
+            base_url=base_url,
+            canonical_url=(base_url + path_from_root) if base_url else "",
+            page_title="検索",
+            css_path=css_path,
+            root_path=root_path,
+            js_path=js_path,
+            manifest_path=manifest_path,
+            nav_active="search",
+        )
+        write_text(OUT / "search" / "index.html", html)
+        sitemap_urls.append(path_from_root)
+
+    def render_featured_hub() -> None:
+        path_from_root = "featured/"
+        depth = page_depth(path_from_root)
+        root_path = "../" * depth
+        css_path = rel(depth, "assets/style.css")
+        html = tpl_featured.render(
+            site_name=site_name,
+            base_url=base_url,
+            canonical_url=(base_url + path_from_root) if base_url else "",
+            page_title="特集",
+            css_path=css_path,
+            root_path=root_path,
+            nav_active="featured",
+            featured_links=[
+                {"href": f"{root_path}featured/rank/", "title": "ランキング（API rank）"},
+                {"href": f"{root_path}featured/sample-movies/", "title": "サンプル動画あり"},
+                {"href": f"{root_path}featured/sample-images/", "title": "サンプル画像あり"},
+            ],
+        )
+        write_text(OUT / "featured" / "index.html", html)
+        sitemap_urls.append(path_from_root)
+
+    # ===== Home =====
+    home_works = works_sorted[:PER_PAGE]
+    # small link to paging only on top
+    render_index(
+        OUT,
+        page_title="トップ",
+        heading="最新作品",
+        works_list=home_works,
+        path_from_root="",
+        pager={"show_paging_link": True, "paging_href": "pages/1/"},
+        extra={"nav_active": "home"},
     )
-    tpl_index = env.get_template(TPL_INDEX)
-    tpl_page = env.get_template(TPL_PAGE)
-    tpl_list = env.get_template(TPL_LIST)
-    tpl_search = None
-    try:
-        tpl_search = env.get_template(TPL_SEARCH)
-    except Exception:
-        tpl_search = None
 
-    works_raw = data.get("works") or []
-    works: List[Dict[str, Any]] = [normalize_work(w) for w in works_raw if isinstance(w, dict)]
-    works = [w for w in works if w.get("id") and w.get("title")]
-
-    works_sorted = sorted(works, key=lambda x: parse_release_date_sort_key(x.get("release_date", "")), reverse=True)
-
-    actresses, actresses_keys, genres, genres_keys, makers, makers_keys, series, series_keys = build_facets(works_sorted)
-
-    # Search index assets
-    write_search_index_chunks(
-        works_sorted,
-        ASSETS_OUT,
-        actresses_keys=actresses_keys,
-        genres_keys=genres_keys,
-        makers_keys=makers_keys,
-        series_keys=series_keys,
-        chunk_size=2000,
-    )
-
-    # css paths per depth
-    CSS_ROOT = "./assets/style.css"
-    CSS_1DOWN = "../assets/style.css"
-    CSS_2DOWN = "../../assets/style.css"
-
-    # common hrefs (relative)
-    def nav_for(depth: int):
-        if depth == 0:
-            return {
-                "home_href": "./",
-                "pages_href": "./pages/1/",
-                "actresses_href": "./actresses/",
-                "genres_href": "./genres/",
-                "search_href": "./search/",
-                "works_prefix": "./works/",
-            }
-        if depth == 1:
-            return {
-                "home_href": "../",
-                "pages_href": "../pages/1/",
-                "actresses_href": "../actresses/",
-                "genres_href": "../genres/",
-                "search_href": "../search/",
-                "works_prefix": "../works/",
-            }
-        if depth == 2:
-            return {
-                "home_href": "../../",
-                "pages_href": "../../pages/1/",
-                "actresses_href": "../../actresses/",
-                "genres_href": "../../genres/",
-                "search_href": "../../search/",
-                "works_prefix": "../../works/",
-            }
-        raise ValueError("depth must be 0..2")
-
-    # =============================
-    # 1) Home
-    # =============================
-    PER_PAGE = 24
+    # ===== Paging =====
     total_pages = max(1, math.ceil(len(works_sorted) / PER_PAGE))
-
-    write_text(
-        OUT / "index.html",
-        tpl_index.render(
-            site_name=site_name,
-            works=works_sorted[:PER_PAGE],
-            css_path=CSS_ROOT,
-            page_title=site_name,
-            page_description=f"{site_name} の作品一覧です。",
-            page=1,
-            total_pages=total_pages,
-            canonical_url=abs_url(base_url, "") if base_url else "",
-            **nav_for(0),
-        ),
-    )
-
-    # =============================
-    # 2) Paging (/pages/<n>/)
-    # =============================
-    for pnum in range(1, total_pages + 1):
-        start = (pnum - 1) * PER_PAGE
-        end = start + PER_PAGE
-        write_text(
-            OUT / "pages" / str(pnum) / "index.html",
-            tpl_index.render(
-                site_name=site_name,
-                works=works_sorted[start:end],
-                css_path=CSS_2DOWN,
-                page_title=f"作品一覧（{pnum}ページ目）",
-                page_description=f"作品一覧の {pnum} ページ目です。",
-                page=pnum,
-                total_pages=total_pages,
-                canonical_url=abs_url(base_url, f"pages/{pnum}/") if base_url else "",
-                **nav_for(2),
-            ),
+    for p in range(1, total_pages + 1):
+        start = (p - 1) * PER_PAGE
+        end = p * PER_PAGE
+        page_works = works_sorted[start:end]
+        pager = {
+            "page": p,
+            "total": total_pages,
+            "prev": f"pages/{p-1}/" if p > 1 else "",
+            "next": f"pages/{p+1}/" if p < total_pages else "",
+        }
+        out_dir = OUT / "pages" / str(p)
+        render_index(
+            out_dir,
+            page_title=f"作品一覧 {p}/{total_pages}",
+            heading="作品一覧（ページング）",
+            works_list=page_works,
+            path_from_root=f"pages/{p}/",
+            pager=pager,
+            extra={"nav_active": "pages"},
         )
 
-    # =============================
-    # 3) Work pages (/works/<id>/)
-    # =============================
-    by_id = {w["id"]: w for w in works_sorted if w.get("id")}
-
-    # related helpers
-    def related_by_actress(w: Dict[str, Any], limit: int = 12) -> List[Dict[str, Any]]:
-        acts = w.get("actresses") or []
-        if not acts:
-            return []
-        # 1人目を優先（重すぎない）
-        a0 = acts[0]
-        pool = actresses.get(a0, [])
-        out = [x for x in pool if x.get("id") != w.get("id")]
-        out = sorted(out, key=lambda x: parse_release_date_sort_key(x.get("release_date", "")), reverse=True)
-        return out[:limit]
-
-    def related_by_genre(w: Dict[str, Any], limit: int = 12) -> List[Dict[str, Any]]:
-        tags = w.get("tags") or []
-        if not tags:
-            return []
-        # 人気タグは件数が多いので、上位2タグまで
-        picked = tags[:2]
-        seen = set([w.get("id")])
-        out: List[Dict[str, Any]] = []
-        for g in picked:
-            for x in genres.get(g, []):
-                xid = x.get("id")
-                if not xid or xid in seen:
-                    continue
-                seen.add(xid)
-                out.append(x)
-                if len(out) >= limit:
-                    break
-            if len(out) >= limit:
-                break
-        out = sorted(out, key=lambda x: parse_release_date_sort_key(x.get("release_date", "")), reverse=True)
-        return out[:limit]
-
+    # ===== Works pages =====
     for w in works_sorted:
-        wid = w.get("id")
-        if not wid:
-            continue
+        wid = w["id"]
+        out_dir = OUT / "works" / wid
+        render_page(out_dir, w=w, path_from_root=f"works/{wid}/")
 
-        # facet links
-        w_actress_items = [{"name": a, "href": f"{nav_for(1)['actresses_href']}{slugify_simple(a)}/"} for a in (w.get("actresses") or [])]
-        w_tag_items = [{"name": g, "href": f"{nav_for(1)['genres_href']}{slugify_simple(g)}/"} for g in (w.get("tags") or [])]
-        w_maker_item = None
-        if w.get("maker"):
-            w_maker_item = {"name": w.get("maker"), "href": f"{nav_for(1)['home_href']}makers/{slugify_simple(w.get('maker'))}/"}
-        w_series_item = None
-        if w.get("series"):
-            w_series_item = {"name": w.get("series"), "href": f"{nav_for(1)['home_href']}series/{slugify_simple(w.get('series'))}/"}
-
-        schema_jsonld = build_jsonld_for_work(base_url, w)
-
-        write_text(
-            OUT / "works" / wid / "index.html",
-            tpl_page.render(
-                site_name=site_name,
-                w=w,
-                css_path=CSS_2DOWN,
-                canonical_url=abs_url(base_url, f"works/{wid}/") if base_url else "",
-                related_works=related_by_actress(w, limit=12),
-                related_works_genre=related_by_genre(w, limit=12),
-                w_actress_items=w_actress_items,
-                w_tag_items=w_tag_items,
-                w_maker_item=w_maker_item,
-                w_series_item=w_series_item,
-                schema_jsonld=schema_jsonld,
-                home_href=nav_for(2)["home_href"],
-                actresses_href=nav_for(2)["actresses_href"],
-                genres_href=nav_for(2)["genres_href"],
-                search_href=nav_for(2)["search_href"],
-                works_prefix=nav_for(2)["works_prefix"],
-            ),
+    # ===== Actresses =====
+    actress_items = [{"name": a, "href": f"actresses/{slugify(a)}/"} for a in actresses_keys]
+    render_list(
+        OUT / "actresses",
+        page_title="女優一覧",
+        heading="女優一覧",
+        items=actress_items,
+        path_from_root="actresses/",
+        extra={"nav_active": "actresses"},
+    )
+    for a in actresses_keys:
+        works_a = sort_works_newest(by_actress.get(a, []))
+        out_dir = OUT / "actresses" / slugify(a)
+        render_index(
+            out_dir,
+            page_title=f"女優: {a}",
+            heading=f"女優: {a}",
+            works_list=works_a,
+            path_from_root=f"actresses/{slugify(a)}/",
+            pager=None,
+            extra={"nav_active": "actresses"},
         )
 
-    # =============================
-    # 4) Actresses index/detail
-    # =============================
-    write_text(
-        OUT / "actresses" / "index.html",
-        tpl_list.render(
-            site_name=site_name,
-            page_title="女優一覧",
-            page_description="女優別の一覧ページです。",
-            items=[{"name": a, "href": f"./{slugify_simple(a)}/"} for a in actresses_keys],
-            css_path=CSS_1DOWN,
-            canonical_url=abs_url(base_url, "actresses/") if base_url else "",
-            **nav_for(1),
-        ),
+    # ===== Genres =====
+    genre_items = [{"name": g, "href": f"genres/{slugify(g)}/"} for g in genres_keys]
+    render_list(
+        OUT / "genres",
+        page_title="ジャンル一覧",
+        heading="ジャンル一覧",
+        items=genre_items,
+        path_from_root="genres/",
+        extra={"nav_active": "genres"},
+    )
+    for g in genres_keys:
+        works_g = sort_works_newest(by_genre.get(g, []))
+        out_dir = OUT / "genres" / slugify(g)
+        render_index(
+            out_dir,
+            page_title=f"ジャンル: {g}",
+            heading=f"ジャンル: {g}",
+            works_list=works_g,
+            path_from_root=f"genres/{slugify(g)}/",
+            pager=None,
+            extra={"nav_active": "genres"},
+        )
+
+    # ===== Makers =====
+    maker_items = [{"name": m, "href": f"makers/{slugify(m)}/"} for m in makers_keys]
+    render_list(
+        OUT / "makers",
+        page_title="メーカー一覧",
+        heading="メーカー一覧",
+        items=maker_items,
+        path_from_root="makers/",
+        extra={"nav_active": "makers"},
+    )
+    for m in makers_keys:
+        works_m = sort_works_newest(by_maker.get(m, []))
+        out_dir = OUT / "makers" / slugify(m)
+        render_index(
+            out_dir,
+            page_title=f"メーカー: {m}",
+            heading=f"メーカー: {m}",
+            works_list=works_m,
+            path_from_root=f"makers/{slugify(m)}/",
+            pager=None,
+            extra={"nav_active": "makers"},
+        )
+
+    # ===== Series =====
+    series_items = [{"name": s, "href": f"series/{slugify(s)}/"} for s in series_keys]
+    render_list(
+        OUT / "series",
+        page_title="シリーズ一覧",
+        heading="シリーズ一覧",
+        items=series_items,
+        path_from_root="series/",
+        extra={"nav_active": "series"},
+    )
+    for s in series_keys:
+        works_s = sort_works_newest(by_series.get(s, []))
+        out_dir = OUT / "series" / slugify(s)
+        render_index(
+            out_dir,
+            page_title=f"シリーズ: {s}",
+            heading=f"シリーズ: {s}",
+            works_list=works_s,
+            path_from_root=f"series/{slugify(s)}/",
+            pager=None,
+            extra={"nav_active": "series"},
+        )
+
+    # ===== Featured =====
+    render_featured_hub()
+
+    # rank
+    ranked = [w for w in works_sorted if w.get("api_rank") is not None]
+    ranked.sort(key=lambda w: w.get("api_rank") or 10**9)
+    render_index(
+        OUT / "featured" / "rank",
+        page_title="ランキング（API rank）",
+        heading="ランキング（API rank）",
+        works_list=ranked[:500],
+        path_from_root="featured/rank/",
+        pager=None,
+        extra={"nav_active": "featured"},
     )
 
-    for a in actresses_keys:
-        ws_sorted = sorted(actresses.get(a, []), key=lambda x: parse_release_date_sort_key(x.get("release_date", "")), reverse=True)
-        write_text(
-            OUT / "actresses" / slugify_simple(a) / "index.html",
-            tpl_index.render(
-                site_name=site_name,
-                works=ws_sorted[:PER_PAGE],
-                css_path=CSS_2DOWN,
-                page_title=f"女優：{a}",
-                page_description=f"{a} の作品一覧です。",
-                page=1,
-                total_pages=1,
-                canonical_url=abs_url(base_url, f"actresses/{slugify_simple(a)}/") if base_url else "",
-                **nav_for(2),
-            ),
-        )
-
-    # =============================
-    # 5) Genres index/detail
-    # =============================
-    write_text(
-        OUT / "genres" / "index.html",
-        tpl_list.render(
-            site_name=site_name,
-            page_title="ジャンル一覧",
-            page_description="タグ（ジャンル）別の一覧ページです。",
-            items=[{"name": g, "href": f"./{slugify_simple(g)}/"} for g in genres_keys],
-            css_path=CSS_1DOWN,
-            canonical_url=abs_url(base_url, "genres/") if base_url else "",
-            **nav_for(1),
-        ),
+    # has movie / has image
+    w_mov = [w for w in works_sorted if w.get("_has_mov")]
+    render_index(
+        OUT / "featured" / "sample-movies",
+        page_title="サンプル動画あり",
+        heading="サンプル動画あり",
+        works_list=w_mov[:1000],
+        path_from_root="featured/sample-movies/",
+        pager=None,
+        extra={"nav_active": "featured"},
     )
 
-    for g in genres_keys:
-        ws_sorted = sorted(genres.get(g, []), key=lambda x: parse_release_date_sort_key(x.get("release_date", "")), reverse=True)
-        write_text(
-            OUT / "genres" / slugify_simple(g) / "index.html",
-            tpl_index.render(
-                site_name=site_name,
-                works=ws_sorted[:PER_PAGE],
-                css_path=CSS_2DOWN,
-                page_title=f"ジャンル：{g}",
-                page_description=f"タグ「{g}」の作品一覧です。",
-                page=1,
-                total_pages=1,
-                canonical_url=abs_url(base_url, f"genres/{slugify_simple(g)}/") if base_url else "",
-                **nav_for(2),
-            ),
-        )
+    w_img = [w for w in works_sorted if w.get("_has_img")]
+    render_index(
+        OUT / "featured" / "sample-images",
+        page_title="サンプル画像あり",
+        heading="サンプル画像あり",
+        works_list=w_img[:1000],
+        path_from_root="featured/sample-images/",
+        pager=None,
+        extra={"nav_active": "featured"},
+    )
 
-    # =============================
-    # 6) Makers index/detail (NEW)
-    # =============================
-    if makers_keys:
-        write_text(
-            OUT / "makers" / "index.html",
-            tpl_list.render(
-                site_name=site_name,
-                page_title="メーカー一覧",
-                page_description="メーカー別の一覧ページです。",
-                items=[{"name": m, "href": f"./{slugify_simple(m)}/"} for m in makers_keys],
-                css_path=CSS_1DOWN,
-                canonical_url=abs_url(base_url, "makers/") if base_url else "",
-                **nav_for(1),
-            ),
-        )
+    # ===== Search =====
+    render_search()
 
-        for m in makers_keys:
-            ws_sorted = sorted(makers.get(m, []), key=lambda x: parse_release_date_sort_key(x.get("release_date", "")), reverse=True)
-            write_text(
-                OUT / "makers" / slugify_simple(m) / "index.html",
-                tpl_index.render(
-                    site_name=site_name,
-                    works=ws_sorted[:PER_PAGE],
-                    css_path=CSS_2DOWN,
-                    page_title=f"メーカー：{m}",
-                    page_description=f"メーカー「{m}」の作品一覧です。",
-                    page=1,
-                    total_pages=1,
-                    canonical_url=abs_url(base_url, f"makers/{slugify_simple(m)}/") if base_url else "",
-                    **nav_for(2),
-                ),
-            )
+    # ===== SEO =====
+    # sitemap: 作品数が多いと大きくなるので、必要なら index 分割するが、まずは単一で
+    build_sitemap(base_url, sitemap_urls)
+    build_robots(base_url)
+    build_rss(base_url, site_name, works_sorted)
 
-    # =============================
-    # 7) Series index/detail (NEW)
-    # =============================
-    if series_keys:
-        write_text(
-            OUT / "series" / "index.html",
-            tpl_list.render(
-                site_name=site_name,
-                page_title="シリーズ一覧",
-                page_description="シリーズ別の一覧ページです。",
-                items=[{"name": s, "href": f"./{slugify_simple(s)}/"} for s in series_keys],
-                css_path=CSS_1DOWN,
-                canonical_url=abs_url(base_url, "series/") if base_url else "",
-                **nav_for(1),
-            ),
-        )
-
-        for s in series_keys:
-            ws_sorted = sorted(series.get(s, []), key=lambda x: parse_release_date_sort_key(x.get("release_date", "")), reverse=True)
-            write_text(
-                OUT / "series" / slugify_simple(s) / "index.html",
-                tpl_index.render(
-                    site_name=site_name,
-                    works=ws_sorted[:PER_PAGE],
-                    css_path=CSS_2DOWN,
-                    page_title=f"シリーズ：{s}",
-                    page_description=f"シリーズ「{s}」の作品一覧です。",
-                    page=1,
-                    total_pages=1,
-                    canonical_url=abs_url(base_url, f"series/{slugify_simple(s)}/") if base_url else "",
-                    **nav_for(2),
-                ),
-            )
-
-    # =============================
-    # 8) Search page
-    # =============================
-    if tpl_search is not None:
-        write_text(
-            OUT / "search" / "index.html",
-            tpl_search.render(
-                site_name=site_name,
-                css_path=CSS_1DOWN,
-                canonical_url=abs_url(base_url, "search/") if base_url else "",
-                **nav_for(1),
-            ),
-        )
-
-    # =============================
-    # 9) SEO files
-    # =============================
-    today = datetime.date.today().isoformat()
-
-    rel_urls: List[str] = [""]
-    for pnum in range(1, total_pages + 1):
-        rel_urls.append(f"pages/{pnum}/")
-    for w in works_sorted:
-        wid = w.get("id")
-        if wid:
-            rel_urls.append(f"works/{wid}/")
-    rel_urls.append("actresses/")
-    for a in actresses_keys:
-        rel_urls.append(f"actresses/{slugify_simple(a)}/")
-    rel_urls.append("genres/")
-    for g in genres_keys:
-        rel_urls.append(f"genres/{slugify_simple(g)}/")
-    if makers_keys:
-        rel_urls.append("makers/")
-        for m in makers_keys:
-            rel_urls.append(f"makers/{slugify_simple(m)}/")
-    if series_keys:
-        rel_urls.append("series/")
-        for s in series_keys:
-            rel_urls.append(f"series/{slugify_simple(s)}/")
-    rel_urls.append("search/")
-
-    write_robots_txt(OUT, base_url)
-    write_sitemap_xml(OUT, base_url, rel_urls, today)
-    write_rss_feed(OUT, base_url, site_name, works_sorted, max_items=50)
-
-    print("生成完了：docs/ に出力しました")
+    print(f"OK: built docs at {OUT}")
 
 
 if __name__ == "__main__":

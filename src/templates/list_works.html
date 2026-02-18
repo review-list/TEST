@@ -1,54 +1,14 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{{ page_title }} - {{ site_name }}</title>
-  <meta name="description" content="{{ page_description }}" />
-  <link rel="stylesheet" href="{{ css_path }}">
+{% extends "_base.html" %}
+{% block content %}
+<section class="container">
+  <div class="page-head">
+    <h1 class="page-title">{{ heading }}</h1>
+  </div>
 
-    {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}" />{% endif %}
-  <meta property="og:site_name" content="{{ site_name }}" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="{{ page_title }} - {{ site_name }}" />
-  <meta property="og:description" content="{{ page_description }}" />
-  {% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}" />{% endif %}
-    <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="{{ page_title }} - {{ site_name }}" />
-  <meta name="twitter:description" content="{{ page_description }}" />
-  </head>
-<body>
-  <header class="header">
-    <div class="container header-inner">
-      <div class="brand"><a href="{{ home_href }}">{{ site_name }}</a></div>
-      <nav class="nav">
-        <a href="{{ home_href }}">ホーム</a>
-        <a href="{{ actresses_href }}">女優</a>
-        <a href="{{ genres_href }}">ジャンル</a>
-        <a href="{{ search_href }}">検索</a>
-      </nav>
-    </div>
-  </header>
-
-  <main class="container">
-    <section class="hero">
-      <h1>{{ page_title }}</h1>
-      <p>{{ page_description }}</p>
-    </section>
-
-    {% if items and items|length > 0 %}
-      <div class="list">
-        {% for it in items %}
-          <div class="item">
-            <a href="{{ it.href }}">{{ it.name }}</a>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="small">データがありません。</p>
-    {% endif %}
-
-    <div class="footer">© 2026 {{ site_name }}</div>
-  </main>
-</body>
-</html>
+  <div class="name-grid">
+    {% for it in items %}
+      <a class="name-item" href="{{ root_path }}{{ it.href }}">{{ it.name }}</a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

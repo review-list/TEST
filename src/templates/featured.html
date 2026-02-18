@@ -1,0 +1,18 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="container">
+  <div class="page-head">
+    <h1 class="page-title">特集</h1>
+    <p class="muted">目的別に見つけやすくするページです。</p>
+  </div>
+
+  <div class="feature-grid">
+    {% for f in featured_links %}
+      <a class="feature-card" href="{{ f.href }}">
+        <div class="feature-title">{{ f.title }}</div>
+        <div class="feature-sub muted">クリックして一覧へ</div>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
