@@ -1,0 +1,109 @@
+name: Update existing works only (FANZA) + build docs
+
+on:
+  workflow_dispatch:
+  #消すschedule:
+    # JST 03:15 に実行したい場合（cronはUTC基準）
+    # 03:15 JST = 18:15 UTC (前日)
+    #消す- cron: "15 18 * * *"
+
+jobs:
+  update_existing_only:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      # 既存works.jsonの作品ID順と作品データを丸ごと保存（後で「既存だけ」に戻すため）
+      - name: Snapshot existing works
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          p = Path("src/data/works.json")
+          if not p.exists():
+            print("ERROR: src/data/works.json が見つかりません。既存更新-only運用では事前にworks.jsonが必要です。", file=sys.stderr)
+            sys.exit(1)
+
+          j = json.loads(p.read_text(encoding="utf-8"))
+          works = j.get("works", [])
+          order = []
+          by_id = {}
+          for w in works:
+            wid = w.get("id")
+            if not wid or wid in by_id:
+              continue
+            order.append(wid)
+            by_id[wid] = w
+
+          snap = {"order": order, "by_id": by_id}
+          Path(".existing_snapshot.json").write_text(json.dumps(snap, ensure_ascii=False), encoding="utf-8")
+          print(f"Snapshot saved: {len(order)} works")
+          PY
+
+      # FANZA APIから取得（ここで新規作品が混ざっても、次ステップで捨てる）
+      - name: Fetch (may include new works, will be filtered)
+        env:
+          DMM_API_ID: ${{ secrets.DMM_API_ID }}
+          DMM_AFFILIATE_ID: ${{ secrets.DMM_AFFILIATE_ID }}
+        run: |
+          python src/fetch_to_works_fanza.py
+
+      # 既存IDの作品だけに戻す（IDが同じ作品は “取得後の最新データ” を採用）
+      - name: Keep only existing works (discard new)
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          snap = json.loads(Path(".existing_snapshot.json").read_text(encoding="utf-8"))
+          order = snap["order"]
+          old_by_id = snap["by_id"]
+
+          p = Path("src/data/works.json")
+          j_new = json.loads(p.read_text(encoding="utf-8"))
+          new_works = j_new.get("works", [])
+          new_by_id = {w.get("id"): w for w in new_works if w.get("id")}
+
+          filtered = []
+          for wid in order:
+            # 取得後に同IDがあれば更新版を採用。無ければ古いデータを残す
+            filtered.append(new_by_id.get(wid, old_by_id[wid]))
+
+          j_new["works"] = filtered
+          if "total" in j_new:
+            j_new["total"] = len(filtered)
+
+          p.write_text(json.dumps(j_new, ensure_ascii=False, indent=2), encoding="utf-8")
+          print(f"Filtered works.json: {len(new_works)} -> {len(filtered)} (existing only)")
+          PY
+
+      # サイトを再生成（docs/ 更新）
+      - name: Build docs
+        run: |
+          python src/build.py
+
+      # 変更があればコミットしてpush
+      - name: Commit & push if changed
+        run: |
+          if git status --porcelain | grep .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Update existing works only + rebuild docs"
+            git push
+          else
+            echo "No changes"
+          fi
