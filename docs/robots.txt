@@ -1,3 +1,4 @@
 User-agent: *
+Disallow: /assets/_wi/
 Disallow:
 Sitemap: https://review-list.github.io/TEST/sitemap.xml
