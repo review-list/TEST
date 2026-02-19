@@ -97,6 +97,32 @@ def safe_https(url: str | None) -> str | None:
     return url
 
 
+def looks_like_noimage_url(url: str | None) -> bool:
+    """Fast heuristic (no network) to drop obvious placeholder images."""
+    u = (url or "").strip().lower()
+    if not u:
+        return True
+    hints = (
+        "now_print",
+        "nowprint",
+        "nowprinting",
+        "now_printing",
+        "noimage",
+        "no_img",
+        "no-img",
+        "nophoto",
+        "no-photo",
+        "comingsoon",
+        "coming_soon",
+        "placeholder",
+    )
+    return any(h in u for h in hints)
+
+
+def filter_real_images(urls: List[str]) -> List[str]:
+    return [u for u in urls if u and not looks_like_noimage_url(u)]
+
+
 def parse_dt(s: str) -> Optional[datetime]:
     """
     '2012/8/3 10:00' / '2026-02-13 10:00:00' / '2026-02-13'
@@ -175,12 +201,17 @@ def unique_keep_order(items: Iterable[str]) -> List[str]:
 
 
 def has_sample_images(w: Dict[str, Any]) -> bool:
-    return bool(w.get("sample_images_large") or w.get("sample_images_small"))
+    large = clean_list(w.get("sample_images_large"))
+    small = clean_list(w.get("sample_images_small"))
+    return bool(filter_real_images(large) or filter_real_images(small))
 
 
 def sample_images_count(w: Dict[str, Any]) -> int:
-    xs = w.get("sample_images_large") or w.get("sample_images_small") or []
-    return len(xs) if isinstance(xs, list) else 0
+    large = filter_real_images(clean_list(w.get("sample_images_large")))
+    if large:
+        return len(large)
+    small = filter_real_images(clean_list(w.get("sample_images_small")))
+    return len(small)
 
 
 def has_sample_movie(w: Dict[str, Any]) -> bool:
@@ -188,13 +219,15 @@ def has_sample_movie(w: Dict[str, Any]) -> bool:
 
 
 def best_sample_images_for_lightbox(w: Dict[str, Any]) -> List[str]:
-    xs = w.get("sample_images_large") or w.get("sample_images_small") or []
-    return [x for x in xs if isinstance(x, str) and x.strip()]
+    xs = clean_list(w.get("sample_images_large")) or clean_list(w.get("sample_images_small"))
+    xs = [safe_https(x) for x in xs if isinstance(x, str) and x.strip()]
+    return filter_real_images([x for x in xs if x])
 
 
 def best_sample_images_for_grid(w: Dict[str, Any]) -> List[str]:
-    xs = w.get("sample_images_small") or w.get("sample_images_large") or []
-    return [x for x in xs if isinstance(x, str) and x.strip()]
+    xs = clean_list(w.get("sample_images_small")) or clean_list(w.get("sample_images_large"))
+    xs = [safe_https(x) for x in xs if isinstance(x, str) and x.strip()]
+    return filter_real_images([x for x in xs if x])
 
 
 def video_aspect_ratio(w: Dict[str, Any]) -> str:

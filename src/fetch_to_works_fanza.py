@@ -131,6 +131,27 @@ def _safe_https(url: str) -> str:
     return url
 
 
+def _looks_like_placeholder_url(url: str) -> bool:
+    u = _clean_str(url).lower()
+    if not u:
+        return True
+    hints = (
+        "now_print",
+        "nowprint",
+        "nowprinting",
+        "now_printing",
+        "noimage",
+        "no_img",
+        "no-img",
+        "nophoto",
+        "no-photo",
+        "comingsoon",
+        "coming_soon",
+        "placeholder",
+    )
+    return any(h in u for h in hints)
+
+
 def _parse_date_for_sort(s: str) -> str:
     """
     APIの date は '2012/8/3 10:00' など。ISO風に正規化して格納。
@@ -200,7 +221,20 @@ def _extract_sample_images(sample_image_url: Any) -> Tuple[List[str], List[str]]
                     out.append(_safe_https(it))
         elif isinstance(container, str) and container.strip():
             out.append(_safe_https(container))
-        return out
+        # 重複排除 + NOW PRINTING / NO IMAGE などの明確なプレースホルダURLを除外
+        out2: List[str] = []
+        seen: set[str] = set()
+        for u in out:
+            uu = _clean_str(u)
+            if not uu:
+                continue
+            if _looks_like_placeholder_url(uu):
+                continue
+            if uu in seen:
+                continue
+            seen.add(uu)
+            out2.append(uu)
+        return out2
 
     small = pull(d.get("sample_s"))
     large = pull(d.get("sample_l"))
