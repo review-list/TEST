@@ -579,3 +579,66 @@ button{ font:inherit; }
 }
 .lightbox-prev{ left: 14px; }
 .lightbox-next{ right: 14px; }
+
+
+/* Sort tabs */
+.sort-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+}
+.sort-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.03);
+  color: var(--text);
+  text-decoration:none;
+  font-weight:600;
+  font-size: 13px;
+}
+.sort-tab:hover{ background: rgba(255,255,255,.06); }
+.sort-tab.is-active{
+  background: rgba(56,189,248,.15);
+  border-color: rgba(56,189,248,.45);
+}
+
+/* Rank badge */
+.badge-rank{
+  background: rgba(250,204,21,.15);
+  border: 1px solid rgba(250,204,21,.45);
+  color: #facc15;
+}
+
+/* Detail page: stack layout */
+.work-top{
+  display:block;
+}
+.hero--work{
+  margin-bottom: 14px;
+}
+.work-title--detail{
+  margin-top: 4px;
+}
+.cta--detail{
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+.btn-official--xl{
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 800;
+}
+.info-list--detail{
+  margin-top: 10px;
+}
+
+/* Media head: simpler */
+.media-head{
+  align-items: baseline;
+  gap: 10px;
+}
