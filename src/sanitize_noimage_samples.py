@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """sanitize_noimage_samples.py
 
-works.json に入ってしまった「NOW PRINTING / NO IMAGE」プレースホルダのサンプル画像を除去します。
+作品データ（manifest + chunks）に入ってしまった「NOW PRINTING / NO IMAGE」プレースホルダのサンプル画像を除去します。
 
 特徴:
 - 画像を大量ダウンロードしません
@@ -28,12 +28,14 @@ from typing import Any, Dict, List
 
 import requests
 
+from works_store import load_bundle, save_bundle
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "src" / "data"
 if not DATA_DIR.exists():
     DATA_DIR = Path(__file__).resolve().parent / "data"
 
-WORKS_FILE = DATA_DIR / "works.json"
+MANIFEST_FILE = DATA_DIR / "works_manifest.json"
 SIG_FILE = DATA_DIR / "noimage_signatures.json"
 CACHE_FILE = DATA_DIR / "noimage_cache.json"
 
@@ -176,14 +178,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--max-check", type=int, default=0, help="0=all, otherwise check first N works")
     args = ap.parse_args()
-
-    if not WORKS_FILE.exists():
-        raise SystemExit(f"works.json not found: {WORKS_FILE}")
-
-    data = json.loads(WORKS_FILE.read_text(encoding="utf-8"))
-    works: List[Dict[str, Any]] = data.get("works") if isinstance(data, dict) else []
-    if not isinstance(works, list):
-        raise SystemExit("works.json format error")
+    meta, works = load_bundle(DATA_DIR)
+    if not works:
+        raise SystemExit(f"works data not found: {MANIFEST_FILE} (or legacy works.json)")
 
     sig = _load_signatures()
     cache = _load_cache()
@@ -242,8 +239,9 @@ def main() -> None:
                 w.pop("sample_images_large", None)
 
     if changed:
-        WORKS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
+        # 保存（manifest + chunks に書き戻し）
+        chunk_size = int(meta.get("chunk_size") or 500) if isinstance(meta, dict) else 500
+        save_bundle(DATA_DIR, meta if isinstance(meta, dict) else {}, works, chunk_size=chunk_size, cleanup_legacy=True)
     _save_cache(cache)
 
     print(f"OK: checked={checked} changed={changed}")

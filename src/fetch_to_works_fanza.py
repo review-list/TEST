@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-DMM/FANZA 商品情報API v3（ItemList）から works.json を生成/更新する。
+DMM/FANZA 商品情報API v3（ItemList）から 作品データ（manifest + chunks）を生成/更新する。
 
 - service=digital, floor=videoa（FANZA動画想定）
 - 作品によって sampleImageURL / sampleMovieURL が無い場合があります
@@ -23,14 +23,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from works_store import load_bundle, save_bundle, paths
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "src" / "data"  # compatibility: run from repo root or src/
 if not DATA_DIR.exists():
     DATA_DIR = Path(__file__).resolve().parent / "data"
 
-OUT_FILE = DATA_DIR / "works.json"
-
+MANIFEST_FILE, CHUNKS_DIR, LEGACY_FILE = paths(DATA_DIR)
 API_ID = (os.getenv("DMM_API_ID") or "").strip().strip('"').strip("'")
 AFFILIATE_ID = (os.getenv("DMM_AFFILIATE_ID") or "").strip().strip('"').strip("'")
 
@@ -49,24 +50,24 @@ RANK_PAGES = 3        # 人気（rank）を何ページ取るか（100×3=300件
 SLEEP_SEC = 0.6       # API負荷回避
 TIMEOUT = 30
 
-MAX_TOTAL_WORKS = 20000  # works.jsonの最大件数（増えすぎ防止）
+MAX_TOTAL_WORKS = 20000  # 作品データの最大件数（増えすぎ防止）
 UPDATE_EXISTING = True   # 既存作品にも不足があれば上書きする
 
 # ===== テスト運用向けスイッチ =====
-# False: 作品数を増やさず、works.json に存在する作品だけ更新（おすすめ：テスト中）
+# False: 作品数を増やさず、既存作品だけ更新（おすすめ：テスト中）
 # True : 新規作品も追加して更新（本番運用で最終的にここを True にする）
 ADD_NEW_WORKS = False
 
 # テスト用：保存時に件数を切り詰める（重くしないためのテスト運用向け）
 #  - False: 切り詰めない（通常はこちら）
-#  - True : TRIM_TO 件までに減らす（works.json の件数を固定してUI確認したい時）
+#  - True : TRIM_TO 件までに減らす（件数を固定してUI確認したい時）
 TRIM_ENABLE = True
-TRIM_TO = 1001
+TRIM_TO = 100
 
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="FANZA ItemList から works.json を生成/更新する（full / update-only 対応）\n"
+        description="FANZA ItemList から 作品データを生成/更新する（full / update-only 対応）\n"
         "※ 何も指定しない場合の挙動は、ソース内の ADD_NEW_WORKS に従います。"
     )
     p.add_argument("--site", default=SITE, help="site (default: FANZA)")
@@ -99,7 +100,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--freeze-count",
         action="store_true",
-        help="full モードでも作品数を増やさず、現在のworks.jsonの件数に固定する",
+        help="full モードでも作品数を増やさず、現在の件数に固定する",
     )
     p.add_argument(
         "--trim-to",
@@ -235,22 +236,19 @@ def _pick_best_movie_url(sample_movie_url: Any) -> Tuple[Optional[str], Dict[str
     return urls.get(best_key), urls, (w, h)
 
 
-def _load_existing() -> Dict[str, Any]:
-    if OUT_FILE.exists():
-        try:
-            data = json.loads(OUT_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("works"), list):
-                if "site_name" not in data:
-                    data["site_name"] = SITE_NAME
-                return data
-        except Exception:
-            pass
-    return {"site_name": SITE_NAME, "works": []}
+def _load_existing() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Load existing works.
 
+    優先: works_manifest.json + works_chunks/
+    互換: works.json
+    """
+    meta, works = load_bundle(DATA_DIR)
+    if not isinstance(meta, dict):
+        meta = {}
+    if not meta.get("site_name"):
+        meta["site_name"] = SITE_NAME
+    return meta, works
 
-def _save(data: Dict[str, Any]) -> None:
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _fetch_page(
@@ -476,8 +474,7 @@ def main() -> None:
 
     full_mode = (not update_only)
 
-    existing = _load_existing()
-    existing_works: List[Dict[str, Any]] = existing.get("works", [])
+    meta, existing_works = _load_existing()
     by_id: Dict[str, Dict[str, Any]] = {str(w.get("id")): w for w in existing_works if w.get("id")}
 
     # fullモードで「作品数を増やさない」= 現在の件数に上限を固定
@@ -564,10 +561,10 @@ def main() -> None:
     if trim_to and len(works) > trim_to:
         works = works[:trim_to]
 
-    existing["site_name"] = existing.get("site_name") or SITE_NAME
-    existing["works"] = works
+    meta["site_name"] = meta.get("site_name") or SITE_NAME
 
-    _save(existing)
+    # 保存（manifest + chunks）
+    save_bundle(DATA_DIR, meta, works, chunk_size=500, cleanup_legacy=True)
 
     mode_str = "update-only" if update_only else "full"
     extra = []
@@ -576,8 +573,8 @@ def main() -> None:
     if trim_to:
         extra.append(f"trim-to={trim_to}")
     extra_s = (" (" + ",".join(extra) + ")") if extra else ""
-    print(f"OK: works.json updated: mode={mode_str}{extra_s} total={len(works)} new={total_new} updated={total_updated}")
-    print(f"file: {OUT_FILE}")
+    print(f"OK: works data updated: mode={mode_str}{extra_s} total={len(works)} new={total_new} updated={total_updated}")
+    print(f"manifest: {MANIFEST_FILE}")
 
 
 if __name__ == "__main__":

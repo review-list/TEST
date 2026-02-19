@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
+import gzip
 import json
 import math
 import os
 import re
+import secrets
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,6 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from works_store import load_bundle
 
 
 # =============================
@@ -25,7 +30,7 @@ ASSETS_SRC = SRC / "assets"
 OUT = ROOT / "docs"
 ASSETS_OUT = OUT / "assets"
 
-WORKS_JSON = DATA_DIR / "works.json"
+WORKS_MANIFEST = DATA_DIR / "works_manifest.json"  # works_store が優先して読み込む
 
 
 # =============================
@@ -128,7 +133,7 @@ def dt_sort_key(w: Dict[str, Any]) -> Tuple[int, str]:
 def get_base_url(data: Dict[str, Any]) -> str:
     """
     sitemap/OGP/canonical 用の base_url。
-    優先: 環境変数 SITE_URL > works.json の site_url/base_url > GitHub Pages 推測
+    優先: 環境変数 SITE_URL > 作品データの site_url/base_url > GitHub Pages 推測
     """
     base = (os.getenv("SITE_URL") or "").strip()
     if not base:
@@ -354,14 +359,48 @@ def compute_related(works: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Dic
 
 
 # =============================
-# Search index (chunk + manifest)
+# Search index (protected: embed manifest + compressed chunks)
 # =============================
-def build_search_index(works_sorted: List[Dict[str, Any]]) -> None:
+_SEARCH_XOR_KEY = b"ReviewCatalog-v1"
+
+
+def _xor_bytes(data: bytes, key: bytes = _SEARCH_XOR_KEY) -> bytes:
+    if not data:
+        return data
+    klen = len(key)
+    return bytes((b ^ key[i % klen]) for i, b in enumerate(data))
+
+
+def _encode_payload(obj: Any) -> str:
+    """JSON -> gzip -> xor -> base64（URL直叩きされにくい形）"""
+    raw = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    gz = gzip.compress(raw, compresslevel=9)
+    ob = _xor_bytes(gz)
+    return base64.b64encode(ob).decode("ascii")
+
+
+def build_search_index(works_sorted: List[Dict[str, Any]]) -> Dict[str, str]:
+    """検索用データを「JSONのまま公開」しない。
+
+    - chunks: docs/assets/_wi/*.dat に出力（gzip+xor+base64）
+    - manifest: search/index.html に埋め込む（gzip+xor+base64）
+    - card はキー短縮のため「配列形式」にする
+
+    戻り値:
+      {"manifest_b64": "...", "salt": "..."}
+    """
     ensure_dir(ASSETS_OUT)
 
-    cards: List[Dict[str, Any]] = []
+    # 出力先（分かりにくい場所に置く）
+    salt = secrets.token_hex(3)  # buildごとに変わる
+    wi_dir = ASSETS_OUT / "_wi"
+    ensure_dir(wi_dir)
+
+    # cards: 配列（キー短縮）
+    # [0]id [1]title [2]release_date [3]hero_image [4]path [5]tags [6]actresses
+    # [7]maker [8]series [9]has_img(0/1) [10]img_count [11]has_mov(0/1) [12]api_rank
+    cards: List[List[Any]] = []
     tag_counts: Dict[str, int] = {}
-    actress_counts: Dict[str, int] = {}
     maker_counts: Dict[str, int] = {}
     series_counts: Dict[str, int] = {}
 
@@ -371,12 +410,12 @@ def build_search_index(works_sorted: List[Dict[str, Any]]) -> None:
             continue
 
         tags = w.get("tags") or []
-        for t in tags:
-            tag_counts[t] = tag_counts.get(t, 0) + 1
-
-        actresses = w.get("actresses") or []
-        for a in actresses:
-            actress_counts[a] = actress_counts.get(a, 0) + 1
+        if isinstance(tags, list):
+            for t in tags:
+                if isinstance(t, str) and t:
+                    tag_counts[t] = tag_counts.get(t, 0) + 1
+        else:
+            tags = []
 
         maker = (w.get("maker") or "").strip()
         if maker:
@@ -386,52 +425,54 @@ def build_search_index(works_sorted: List[Dict[str, Any]]) -> None:
         if series:
             series_counts[series] = series_counts.get(series, 0) + 1
 
+        actresses = w.get("actresses") or []
+        if not isinstance(actresses, list):
+            actresses = []
+
         cards.append(
-            {
-                "id": wid,
-                "title": w.get("title") or "",
-                "release_date": w.get("release_date") or "",
-                "hero_image": w.get("hero_image") or "",
-                "path": f"works/{wid}/",
-                "tags": tags,
-                "actresses": actresses,
-                "maker": maker,
-                "series": series,
-                "has_img": bool(w.get("_has_img")),
-                "img_count": int(w.get("_img_count") or 0),
-                "has_mov": bool(w.get("_has_mov")),
-                "api_rank": w.get("api_rank"),
-            }
+            [
+                wid,
+                w.get("title") or "",
+                w.get("release_date") or "",
+                w.get("hero_image") or "",
+                f"works/{wid}/",
+                tags,
+                actresses,
+                maker,
+                series,
+                1 if w.get("_has_img") else 0,
+                int(w.get("_img_count") or 0),
+                1 if w.get("_has_mov") else 0,
+                w.get("api_rank"),
+            ]
         )
 
-    # chunking
-    chunks: List[Dict[str, Any]] = []
+    # chunks（.dat）
+    chunks: List[List[Any]] = []  # [[file, count], ...]
     total = len(cards)
     n_chunks = math.ceil(total / SEARCH_CHUNK_SIZE) if total else 0
     for i in range(n_chunks):
         chunk_cards = cards[i * SEARCH_CHUNK_SIZE : (i + 1) * SEARCH_CHUNK_SIZE]
-        fname = f"works_index_{i:03d}.json"
-        write_json(ASSETS_OUT / fname, chunk_cards)
-        chunks.append({"file": fname, "count": len(chunk_cards)})
+        fname = f"wi_{i:03d}_{salt}.dat"
+        write_text(wi_dir / fname, _encode_payload(chunk_cards))
+        chunks.append([f"_wi/{fname}", len(chunk_cards)])
 
     popular_tags = sorted(tag_counts.items(), key=lambda kv: kv[1], reverse=True)[:POPULAR_TAGS_COUNT]
-    manifest = {
-        "version": 2,
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "total": total,
-        "chunk_size": SEARCH_CHUNK_SIZE,
-        "chunks": chunks,
-        "popular_tags": [{"name": k, "count": v} for k, v in popular_tags],
-        "tags": sorted(tag_counts.keys(), key=lambda s: s.lower()),
-        "actresses": sorted(actress_counts.keys(), key=lambda s: s.lower()),
-        "makers": sorted(maker_counts.keys(), key=lambda s: s.lower()),
-        "series": sorted(series_counts.keys(), key=lambda s: s.lower()),
-    }
-    write_json(ASSETS_OUT / "works_index_manifest.json", manifest)
 
-    # compat: single file (small sites)
-    if total <= SEARCH_CHUNK_SIZE:
-        write_json(ASSETS_OUT / "works_index.json", cards)
+    # manifest（短キー）
+    # v:version ga:generated_at t:total cs:chunk_size c:chunks pt:popular_tags mk:makers sr:series
+    manifest = {
+        "v": 3,
+        "ga": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "t": total,
+        "cs": SEARCH_CHUNK_SIZE,
+        "c": chunks,
+        "pt": [[k, v] for k, v in popular_tags],
+        "mk": sorted(maker_counts.keys(), key=lambda s: s.lower()),
+        "sr": sorted(series_counts.keys(), key=lambda s: s.lower()),
+    }
+
+    return {"manifest_b64": _encode_payload(manifest), "salt": salt}
 
 
 # =============================
@@ -476,6 +517,9 @@ def build_sitemap(base_url: str, urls: List[str]) -> None:
 def build_robots(base_url: str) -> None:
     lines = [
         "User-agent: *",
+        # 検索用データ（難読化済み）をボットにクロールさせない
+        "Disallow: /assets/_wi/",
+        # それ以外は許可
         "Disallow:",
     ]
     if base_url:
@@ -522,12 +566,11 @@ def build_rss(base_url: str, site_name: str, works_sorted: List[Dict[str, Any]])
 # Main build
 # =============================
 def main() -> None:
-    data = load_json(WORKS_JSON)
-    site_name = data.get("site_name", "Catalog")
+    meta, works_raw = load_bundle(DATA_DIR)
+    site_name = meta.get("site_name", "Catalog")
 
-    base_url = get_base_url(data)
+    base_url = get_base_url(meta)
 
-    works_raw = data.get("works") or []
     works = [normalize_work(w) for w in works_raw if isinstance(w, dict) and str(w.get("id") or "").strip()]
     works_sorted = sort_works_newest(works)
 
@@ -574,7 +617,7 @@ def main() -> None:
     ensure_dir(ASSETS_OUT)
 
     copy_assets()
-    build_search_index(works_sorted)
+    search_embed = build_search_index(works_sorted)
 
     # collect URLs for sitemap
     sitemap_urls: List[str] = []
@@ -679,7 +722,6 @@ def main() -> None:
         root_path = "../" * depth
         css_path = rel(depth, "assets/style.css")
         js_path = rel(depth, "assets/search.js")
-        manifest_path = rel(depth, "assets/works_index_manifest.json")
         html = tpl_search.render(
             site_name=site_name,
             base_url=base_url,
@@ -688,7 +730,7 @@ def main() -> None:
             css_path=css_path,
             root_path=root_path,
             js_path=js_path,
-            manifest_path=manifest_path,
+            search_manifest_b64=search_embed.get("manifest_b64", ""),
             nav_active="search",
         )
         write_text(OUT / "search" / "index.html", html)
