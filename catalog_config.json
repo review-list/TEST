@@ -1,0 +1,13 @@
+{
+  "site_name": "Review Catalog",
+  "update": {
+    "enabled": true,
+    "jst_time": "00:00",
+    "workflow_path": ".github/workflows/update.yml"
+  },
+  "fetch": {
+    "add_new_works": false,
+    "trim_enable": true,
+    "trim_to": 100
+  }
+}
