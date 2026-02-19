@@ -16,6 +16,7 @@ import json
 import os
 import re
 import time
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -50,6 +51,63 @@ TIMEOUT = 30
 
 MAX_TOTAL_WORKS = 20000  # works.jsonの最大件数（増えすぎ防止）
 UPDATE_EXISTING = True   # 既存作品にも不足があれば上書きする
+
+# ===== テスト運用向けスイッチ =====
+# False: 作品数を増やさず、works.json に存在する作品だけ更新（おすすめ：テスト中）
+# True : 新規作品も追加して更新（本番運用で最終的にここを True にする）
+ADD_NEW_WORKS = False
+
+# テスト用：保存時に件数を切り詰める（重くしないためのテスト運用向け）
+#  - False: 切り詰めない（通常はこちら）
+#  - True : TRIM_TO 件までに減らす（works.json の件数を固定してUI確認したい時）
+TRIM_ENABLE = True
+TRIM_TO = 1001
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="FANZA ItemList から works.json を生成/更新する（full / update-only 対応）\n"
+        "※ 何も指定しない場合の挙動は、ソース内の ADD_NEW_WORKS に従います。"
+    )
+    p.add_argument("--site", default=SITE, help="site (default: FANZA)")
+    p.add_argument("--service", default=SERVICE, help="service (default: digital)")
+    p.add_argument("--floor", default=FLOOR, help="floor (default: videoa)")
+
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--update-only",
+        action="store_true",
+        help="works.json に既に存在する作品だけ更新する（作品数を増やさない）",
+    )
+    mode.add_argument(
+        "--full",
+        action="store_true",
+        help="新規作品の追加も含めて更新する",
+    )
+
+    p.add_argument("--hits", type=int, default=HITS, help="hits per page (max 100)")
+    p.add_argument("--date-pages", type=int, default=DATE_PAGES, help="pages for sort=date")
+    p.add_argument("--rank-pages", type=int, default=RANK_PAGES, help="pages for sort=rank")
+    p.add_argument("--sleep", type=float, default=SLEEP_SEC, help="sleep seconds between calls")
+    p.add_argument("--timeout", type=int, default=TIMEOUT, help="request timeout seconds")
+    p.add_argument(
+        "--max-total",
+        type=int,
+        default=MAX_TOTAL_WORKS,
+        help="max works in works.json (full mode only, default: 20000)",
+    )
+    p.add_argument(
+        "--freeze-count",
+        action="store_true",
+        help="full モードでも作品数を増やさず、現在のworks.jsonの件数に固定する",
+    )
+    p.add_argument(
+        "--trim-to",
+        type=int,
+        default=0,
+        help="保存時に件数を指定数まで切り詰める（0=無効）。テスト用",
+    )
+    return p.parse_args()
 
 
 def _ensure_dict(x: Any) -> Dict[str, Any]:
@@ -195,19 +253,29 @@ def _save(data: Dict[str, Any]) -> None:
     OUT_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _fetch_page(sess: requests.Session, *, sort: str, offset: int, hits: int) -> List[Dict[str, Any]]:
+def _fetch_page(
+    sess: requests.Session,
+    *,
+    sort: str,
+    offset: int,
+    hits: int,
+    site: str,
+    service: str,
+    floor: str,
+    timeout: int,
+) -> List[Dict[str, Any]]:
     params = {
         "api_id": API_ID,
         "affiliate_id": AFFILIATE_ID,
-        "site": SITE,
-        "service": SERVICE,
-        "floor": FLOOR,
+        "site": site,
+        "service": service,
+        "floor": floor,
         "sort": sort,
         "offset": offset,
         "hits": hits,
         "output": "json",
     }
-    r = sess.get(ENDPOINT, params=params, timeout=TIMEOUT)
+    r = sess.get(ENDPOINT, params=params, timeout=timeout)
     r.raise_for_status()
     payload = r.json()
 
@@ -380,9 +448,50 @@ def main() -> None:
     if not API_ID or not AFFILIATE_ID:
         raise SystemExit("環境変数 DMM_API_ID / DMM_AFFILIATE_ID を設定してください。")
 
+    args = _parse_args()
+    site = str(args.site or SITE)
+    service = str(args.service or SERVICE)
+    floor = str(args.floor or FLOOR)
+
+    hits = int(args.hits)
+    if hits <= 0:
+        hits = HITS
+    if hits > 100:
+        hits = 100
+
+    date_pages = max(0, int(args.date_pages))
+    rank_pages = max(0, int(args.rank_pages))
+    sleep_sec = float(args.sleep)
+    timeout = int(args.timeout)
+
+    # モード決定：
+    #  - コマンド指定があればそれを優先
+    #  - 指定が無ければ ADD_NEW_WORKS に従う（今は False 推奨）
+    if bool(args.full):
+        update_only = False
+    elif bool(args.update_only):
+        update_only = True
+    else:
+        update_only = (not bool(ADD_NEW_WORKS))
+
+    full_mode = (not update_only)
+
     existing = _load_existing()
     existing_works: List[Dict[str, Any]] = existing.get("works", [])
     by_id: Dict[str, Dict[str, Any]] = {str(w.get("id")): w for w in existing_works if w.get("id")}
+
+    # fullモードで「作品数を増やさない」= 現在の件数に上限を固定
+    max_total = int(args.max_total) if int(args.max_total) > 0 else MAX_TOTAL_WORKS
+    if args.freeze_count and existing_works:
+        max_total = min(max_total, len(existing_works))
+
+    # 切り詰め（優先順位）
+    #  1) --trim-to が指定されていればそれを採用
+    #  2) 未指定なら、コード内スイッチ TRIM_ENABLE/TRIM_TO を採用
+    if int(args.trim_to) > 0:
+        trim_to = int(args.trim_to)
+    else:
+        trim_to = int(TRIM_TO) if (bool(TRIM_ENABLE) and int(TRIM_TO) > 0) else 0
 
     sess = requests.Session()
     sess.headers.update({"User-Agent": "catalog-fetch/2.0 (+requests)"})
@@ -395,7 +504,16 @@ def main() -> None:
         offset = 1
         rank_counter = 1
         for p in range(pages):
-            items = _fetch_page(sess, sort=sort, offset=offset, hits=HITS)
+            items = _fetch_page(
+                sess,
+                sort=sort,
+                offset=offset,
+                hits=hits,
+                site=site,
+                service=service,
+                floor=floor,
+                timeout=timeout,
+            )
             if not items:
                 break
             for idx, item in enumerate(items):
@@ -407,8 +525,10 @@ def main() -> None:
                 old_w = by_id.get(wid)
 
                 if old_w is None:
-                    by_id[wid] = new_w
-                    total_new += 1
+                    # update-only のときは「新規は追加しない」
+                    if full_mode and (not update_only):
+                        by_id[wid] = new_w
+                        total_new += 1
                 else:
                     if UPDATE_EXISTING:
                         merged = _merge_work(old_w, new_w)
@@ -416,31 +536,47 @@ def main() -> None:
                         if merged != old_w:
                             by_id[wid] = merged
                             total_updated += 1
-            offset += HITS
+            offset += hits
             rank_counter += len(items)
-            time.sleep(SLEEP_SEC)
+            time.sleep(sleep_sec)
 
     # 1) 新着
-    process("date", DATE_PAGES, set_rank=False)
+    process("date", date_pages, set_rank=False)
     # 2) 人気（api_rank付与）
-    process("rank", RANK_PAGES, set_rank=True)
+    process("rank", rank_pages, set_rank=True)
 
-    works = list(by_id.values())
+    # 保存対象 works
+    if update_only:
+        # 既存の順序/件数を維持（作品数を増やさない）
+        ordered_ids = [str(w.get("id")) for w in existing_works if w.get("id")]
+        works = [by_id[i] for i in ordered_ids if i in by_id]
+    else:
+        works = list(by_id.values())
+        # 件数上限（新しい順優先）
+        def sort_key(w: Dict[str, Any]) -> str:
+            return _parse_date_for_sort(_clean_str(w.get("release_date")))
 
-    # 件数上限（新しい順優先）
-    def sort_key(w: Dict[str, Any]) -> str:
-        return _parse_date_for_sort(_clean_str(w.get("release_date")))
+        works.sort(key=sort_key, reverse=True)
+        if len(works) > max_total:
+            works = works[:max_total]
 
-    works.sort(key=sort_key, reverse=True)
-    if len(works) > MAX_TOTAL_WORKS:
-        works = works[:MAX_TOTAL_WORKS]
+    # 追加の切り詰め（テスト用）
+    if trim_to and len(works) > trim_to:
+        works = works[:trim_to]
 
     existing["site_name"] = existing.get("site_name") or SITE_NAME
     existing["works"] = works
 
     _save(existing)
 
-    print(f"OK: works.json updated: total={len(works)} new={total_new} updated={total_updated}")
+    mode_str = "update-only" if update_only else "full"
+    extra = []
+    if args.freeze_count:
+        extra.append("freeze-count")
+    if trim_to:
+        extra.append(f"trim-to={trim_to}")
+    extra_s = (" (" + ",".join(extra) + ")") if extra else ""
+    print(f"OK: works.json updated: mode={mode_str}{extra_s} total={len(works)} new={total_new} updated={total_updated}")
     print(f"file: {OUT_FILE}")
 
 

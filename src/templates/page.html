@@ -1,8 +1,19 @@
 {% extends "_base.html" %}
 {% block content %}
 <section class="container">
-  <div class="page-head">
-    <h1 class="page-title">{{ w.title }}</h1>
+  <div class="work-top">
+    <div class="hero hero--work">
+      {% if w.hero_image %}
+        <button class="hero-btn" id="openHero" type="button" aria-label="画像を拡大">
+          <img src="{{ w.hero_image }}" alt="{{ w.title }}">
+        </button>
+      {% else %}
+        <div class="thumb-placeholder hero-placeholder"></div>
+      {% endif %}
+    </div>
+
+    <h1 class="page-title work-title--detail">{{ w.title }}</h1>
+
     <div class="badges-row">
       {% if w._has_img %}
         <span class="badge badge-img">🖼️ サンプル画像あり{% if w._img_count %}（{{ w._img_count }}枚）{% endif %}</span>
@@ -11,21 +22,59 @@
         <span class="badge badge-mov">🎬 サンプル動画あり</span>
       {% endif %}
     </div>
+
+    {% if w.official_url %}
+      <div class="cta cta--detail">
+        <a class="btn btn-official btn-official--xl" href="{{ w.official_url }}" target="_blank" rel="noopener">公式ページを見る</a>
+      </div>
+    {% endif %}
+
+    <dl class="info-list info-list--detail">
+      {% if w.release_date %}
+        <div class="info-row"><dt>発売日</dt><dd>{{ w.release_date }}</dd></div>
+      {% endif %}
+
+      {% if w.actresses and w.actresses|length > 0 %}
+        <div class="info-row"><dt>女優</dt>
+          <dd class="chips">
+            {% for a in w.actresses %}
+              <a class="chip" href="{{ root_path }}actresses/{{ a|slugify }}/">{{ a }}</a>
+            {% endfor %}
+          </dd>
+        </div>
+      {% endif %}
+
+      {% if w.tags and w.tags|length > 0 %}
+        <div class="info-row"><dt>ジャンル</dt>
+          <dd class="chips">
+            {% for g in w.tags %}
+              <a class="chip" href="{{ root_path }}genres/{{ g|slugify }}/">{{ g }}</a>
+            {% endfor %}
+          </dd>
+        </div>
+      {% endif %}
+
+      {% if w.maker %}
+        <div class="info-row"><dt>メーカー</dt><dd class="chips"><a class="chip" href="{{ root_path }}makers/{{ w.maker|slugify }}/">{{ w.maker }}</a></dd></div>
+      {% endif %}
+      {% if w.series %}
+        <div class="info-row"><dt>シリーズ</dt><dd class="chips"><a class="chip" href="{{ root_path }}series/{{ w.series|slugify }}/">{{ w.series }}</a></dd></div>
+      {% endif %}
+      {% if w.label %}
+        <div class="info-row"><dt>レーベル</dt><dd>{{ w.label }}</dd></div>
+      {% endif %}
+    </dl>
+
+    {% if w.description %}
+      <div class="desc">
+        <h2 class="section-title">概要</h2>
+        <p class="desc-text">{{ w.description }}</p>
+      </div>
+    {% endif %}
   </div>
 
-  <div class="work-detail">
-    <div class="work-detail__media">
-      <div class="hero">
-        {% if w.hero_image %}
-          <button class="hero-btn" id="openHero" type="button" aria-label="画像を拡大">
-            <img src="{{ w.hero_image }}" alt="{{ w.title }}">
-          </button>
-        {% else %}
-          <div class="thumb-placeholder hero-placeholder"></div>
-        {% endif %}
-      </div>
-
-      {% if w.sample_movie %}
+<div class="work-media-sections">
+    {% if w.sample_movie %}
       <div class="media-block">
         <div class="media-head">
           <h2 class="section-title">サンプル動画</h2>
@@ -43,14 +92,13 @@
           ></iframe>
         </div>
       </div>
-      {% endif %}
+    {% endif %}
 
-      {% if grid_images and grid_images|length > 0 %}
+    {% if grid_images and grid_images|length > 0 %}
       <div class="media-block">
         <div class="media-head">
           <h2 class="section-title">サンプル画像</h2>
-          <span class="muted">クリックで拡大（←→で移動）</span>
-        </div>
+                  </div>
 
         <div class="sample-grid" id="sampleGrid">
           {% for img in grid_images %}
@@ -64,71 +112,7 @@
           <button class="btn btn-ghost" id="showMoreImages" type="button">もっと見る（残り{{ grid_images|length - 6 }}枚）</button>
         {% endif %}
       </div>
-      {% endif %}
-    </div>
-
-    <div class="work-detail__info">
-      <div class="cta">
-        {% if w.official_url %}
-          <a class="btn btn-primary" href="{{ w.official_url }}" target="_blank" rel="noopener">公式ページで見る</a>
-        {% endif %}
-      </div>
-
-      <dl class="info-list">
-        {% if w.release_date %}
-          <div class="info-row"><dt>発売日</dt><dd>{{ w.release_date }}</dd></div>
-        {% endif %}
-
-        {% if w.actresses and w.actresses|length > 0 %}
-          <div class="info-row"><dt>女優</dt>
-            <dd class="chips">
-              {% for a in w.actresses %}
-                <a class="chip" href="{{ root_path }}actresses/{{ a|slugify }}/">{{ a }}</a>
-              {% endfor %}
-            </dd>
-          </div>
-        {% endif %}
-
-        {% if w.tags and w.tags|length > 0 %}
-          <div class="info-row"><dt>ジャンル</dt>
-            <dd class="chips">
-              {% for g in w.tags %}
-                <a class="chip" href="{{ root_path }}genres/{{ g|slugify }}/">{{ g }}</a>
-              {% endfor %}
-            </dd>
-          </div>
-        {% endif %}
-
-        {% if w.maker %}
-          <div class="info-row"><dt>メーカー</dt><dd class="chips">
-            <a class="chip" href="{{ root_path }}makers/{{ w.maker|slugify }}/">{{ w.maker }}</a>
-          </dd></div>
-        {% endif %}
-
-        {% if w.series %}
-          <div class="info-row"><dt>シリーズ</dt><dd class="chips">
-            <a class="chip" href="{{ root_path }}series/{{ w.series|slugify }}/">{{ w.series }}</a>
-          </dd></div>
-        {% endif %}
-
-        {% if w.label %}
-          <div class="info-row"><dt>レーベル</dt><dd>{{ w.label }}</dd></div>
-        {% endif %}
-      </dl>
-
-      {% if w.description %}
-        <div class="desc">
-          <h2 class="section-title">概要</h2>
-          <p class="desc-text">{{ w.description }}</p>
-        </div>
-      {% endif %}
-
-      <div class="cta cta--bottom">
-        {% if w.official_url %}
-          <a class="btn btn-primary" href="{{ w.official_url }}" target="_blank" rel="noopener">公式ページで見る</a>
-        {% endif %}
-      </div>
-    </div>
+    {% endif %}
   </div>
 
   {% if related_actress and related_actress|length > 0 %}

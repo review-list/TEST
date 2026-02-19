@@ -559,6 +559,14 @@ def main() -> None:
     tpl_search = env.get_template("search.html")
     tpl_featured = env.get_template("featured.html")
 
+    sort_tabs = [
+        {"id": "latest", "label": "最新順", "href": ""},
+        {"id": "rank", "label": "ランキング順", "href": "rank/"},
+        {"id": "reviews", "label": "レビュー順", "href": "reviews/"},
+        {"id": "movies", "label": "動画あり", "href": "movies/"},
+        {"id": "images", "label": "画像多い", "href": "images/"},
+    ]
+
     # clean docs (keep assets? rebuild all)
     if OUT.exists():
         shutil.rmtree(OUT)
@@ -579,6 +587,7 @@ def main() -> None:
         works_list: List[Dict[str, Any]],
         path_from_root: str,
         pager: Optional[Dict[str, Any]] = None,
+        sort_id: str = "latest",
         extra: Optional[Dict[str, Any]] = None,
     ) -> None:
         depth = page_depth(path_from_root)
@@ -595,6 +604,8 @@ def main() -> None:
             root_path=root_path,
             nav_active=(extra or {}).get("nav_active", ""),
             pager=pager,
+            sort_tabs=(sort_tabs if (extra or {}).get("show_sort_tabs") else None),
+            sort_id=sort_id,
         )
         write_text(out_dir / "index.html", html)
         sitemap_urls.append(path_from_root)
@@ -697,49 +708,138 @@ def main() -> None:
             root_path=root_path,
             nav_active="featured",
             featured_links=[
-                {"href": f"{root_path}featured/rank/", "title": "ランキング（API rank）"},
-                {"href": f"{root_path}featured/sample-movies/", "title": "サンプル動画あり"},
-                {"href": f"{root_path}featured/sample-images/", "title": "サンプル画像あり"},
+                {"href": f"{root_path}rank/", "title": "ランキング（API rank）"},
+                {"href": f"{root_path}movies/", "title": "サンプル動画あり"},
+                {"href": f"{root_path}images/", "title": "サンプル画像あり"},
             ],
         )
         write_text(OUT / "featured" / "index.html", html)
         sitemap_urls.append(path_from_root)
 
-    # ===== Home =====
+    # ===== Latest listing (Home) =====
+    total_pages = max(1, math.ceil(len(works_sorted) / PER_PAGE))
+
+    # page 1 is the top (latest)
     home_works = works_sorted[:PER_PAGE]
-    # small link to paging only on top
+    pager_home = {
+        "page": 1,
+        "total": total_pages,
+        "prev": None,
+        "next": ("pages/2/" if total_pages > 1 else None),
+    }
     render_index(
         OUT,
         page_title="トップ",
-        heading="最新作品",
+        heading="作品一覧",
         works_list=home_works,
         path_from_root="",
-        pager={"show_paging_link": True, "paging_href": "pages/1/"},
-        extra={"nav_active": "home"},
+        pager=pager_home,
+        sort_id="latest",
+        extra={"nav_active": "home", "show_sort_tabs": True},
     )
 
-    # ===== Paging =====
-    total_pages = max(1, math.ceil(len(works_sorted) / PER_PAGE))
-    for p in range(1, total_pages + 1):
+    # legacy: /pages/1/ -> redirect to /
+    legacy_dir = OUT / "pages" / "1"
+    ensure_dir(legacy_dir)
+    write_text(
+        legacy_dir / "index.html",
+        '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../../"><title>Redirect</title>',
+    )
+
+    # page 2..N
+    for p in range(2, total_pages + 1):
         start = (p - 1) * PER_PAGE
         end = p * PER_PAGE
         page_works = works_sorted[start:end]
         pager = {
             "page": p,
             "total": total_pages,
-            "prev": f"pages/{p-1}/" if p > 1 else "",
-            "next": f"pages/{p+1}/" if p < total_pages else "",
+            "prev": ("" if p == 2 else f"pages/{p-1}/"),
+            "next": (f"pages/{p+1}/" if p < total_pages else None),
         }
         out_dir = OUT / "pages" / str(p)
         render_index(
             out_dir,
             page_title=f"作品一覧 {p}/{total_pages}",
-            heading="作品一覧（ページング）",
+            heading="作品一覧",
             works_list=page_works,
             path_from_root=f"pages/{p}/",
             pager=pager,
-            extra={"nav_active": "pages"},
+            sort_id="latest",
+            extra={"nav_active": "home", "show_sort_tabs": True},
         )
+        sitemap_urls.append(f"pages/{p}/")
+
+    # ===== Sort pages (tabs on top) =====
+    def render_sort_pages(*, key: str, heading: str, works_list: List[Dict[str, Any]]) -> None:
+        base = key
+        total = max(1, math.ceil(len(works_list) / PER_PAGE))
+        for p in range(1, total + 1):
+            start = (p - 1) * PER_PAGE
+            end = p * PER_PAGE
+            page_works = works_list[start:end]
+
+            if p == 1:
+                out_dir = OUT / base
+                path_from_root = f"{base}/"
+            else:
+                out_dir = OUT / base / "pages" / str(p)
+                path_from_root = f"{base}/pages/{p}/"
+
+            pager = {
+                "page": p,
+                "total": total,
+                "prev": (None if p == 1 else (f"{base}/" if p == 2 else f"{base}/pages/{p-1}/")),
+                "next": (None if p == total else f"{base}/pages/{p+1}/"),
+            }
+
+            render_index(
+                out_dir,
+                page_title=(heading if p == 1 else f"{heading} {p}/{total}"),
+                heading=heading,
+                works_list=page_works,
+                path_from_root=path_from_root,
+                pager=pager,
+                sort_id=key,
+                extra={"nav_active": "home", "show_sort_tabs": True},
+            )
+            sitemap_urls.append(path_from_root)
+
+    # ランキング順（API rank）
+    ranked = [w for w in works_sorted if w.get("api_rank") is not None]
+    if ranked:
+        ranked.sort(key=lambda w: w.get("api_rank") or 10**9)
+        for i, w in enumerate(ranked, start=1):
+            w["_tmp_rank"] = i
+    else:
+        # fallback: if api_rank is missing, keep latest order as a temporary ranking
+        ranked = list(works_sorted)
+        for i, w in enumerate(ranked, start=1):
+            w["_tmp_rank"] = i
+
+    render_sort_pages(key="rank", heading="ランキング", works_list=ranked)
+
+    # レビュー順（平均点→件数→新しさ）
+    def review_sort_key(w: Dict[str, Any]):
+        avg = w.get("review_average")
+        cnt = w.get("review_count")
+        # missing goes last
+        if avg is None:
+            return (1, 0.0, 0, w.get("_release_ts") or 0)
+        return (0, -(avg or 0.0), -(cnt or 0), -(w.get("_release_ts") or 0))
+
+    reviewed = list(works_sorted)
+    reviewed.sort(key=review_sort_key)
+    render_sort_pages(key="reviews", heading="レビュー順", works_list=reviewed)
+
+    # サンプル動画あり（新しい順）
+    w_mov = [w for w in works_sorted if w.get("_has_mov")]
+    render_sort_pages(key="movies", heading="サンプル動画あり", works_list=w_mov)
+
+    # 画像多い（枚数→新しい順）
+    w_img = [w for w in works_sorted if w.get("_has_img")]
+    w_img.sort(key=lambda w: (-(w.get("_img_count") or 0), -(w.get("_release_ts") or 0)))
+    render_sort_pages(key="images", heading="サンプル画像（多い順）", works_list=w_img)
 
     # ===== Works pages =====
     for w in works_sorted:
@@ -842,41 +942,16 @@ def main() -> None:
     # ===== Featured =====
     render_featured_hub()
 
-    # rank
-    ranked = [w for w in works_sorted if w.get("api_rank") is not None]
-    ranked.sort(key=lambda w: w.get("api_rank") or 10**9)
-    render_index(
-        OUT / "featured" / "rank",
-        page_title="ランキング（API rank）",
-        heading="ランキング（API rank）",
-        works_list=ranked[:500],
-        path_from_root="featured/rank/",
-        pager=None,
-        extra={"nav_active": "featured"},
-    )
-
-    # has movie / has image
-    w_mov = [w for w in works_sorted if w.get("_has_mov")]
-    render_index(
-        OUT / "featured" / "sample-movies",
-        page_title="サンプル動画あり",
-        heading="サンプル動画あり",
-        works_list=w_mov[:1000],
-        path_from_root="featured/sample-movies/",
-        pager=None,
-        extra={"nav_active": "featured"},
-    )
-
-    w_img = [w for w in works_sorted if w.get("_has_img")]
-    render_index(
-        OUT / "featured" / "sample-images",
-        page_title="サンプル画像あり",
-        heading="サンプル画像あり",
-        works_list=w_img[:1000],
-        path_from_root="featured/sample-images/",
-        pager=None,
-        extra={"nav_active": "featured"},
-    )
+    # legacy featured subpages -> redirect to new sort pages
+    ensure_dir(OUT / "featured" / "rank")
+    write_text(OUT / "featured" / "rank" / "index.html",
+               '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../../rank/"><title>Redirect</title>')
+    ensure_dir(OUT / "featured" / "sample-movies")
+    write_text(OUT / "featured" / "sample-movies" / "index.html",
+               '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../../movies/"><title>Redirect</title>')
+    ensure_dir(OUT / "featured" / "sample-images")
+    write_text(OUT / "featured" / "sample-images" / "index.html",
+               '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../../images/"><title>Redirect</title>')
 
     # ===== Search =====
     render_search()

@@ -4,16 +4,18 @@
   <div class="page-head">
     <h1 class="page-title">{{ heading }}</h1>
 
-    {% if pager and pager.show_paging_link %}
-      <div class="top-paging-link">
-        <a class="muted-link" href="{{ root_path }}{{ pager.paging_href }}">作品一覧（ページング）を見る →</a>
+    {% if sort_tabs %}
+      <div class="sort-tabs" role="navigation" aria-label="並び替え">
+        {% for t in sort_tabs %}
+          <a class="sort-tab{% if sort_id == t.id %} is-active{% endif %}" href="{{ root_path }}{{ t.href }}">{{ t.label }}</a>
+        {% endfor %}
       </div>
     {% endif %}
   </div>
 
   {% if pager and pager.page %}
   <div class="pager">
-    {% if pager.prev %}
+    {% if pager.prev is not none %}
       <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
     {% else %}
       <span class="btn btn-ghost is-disabled">← 前</span>
@@ -21,7 +23,7 @@
 
     <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
 
-    {% if pager.next %}
+    {% if pager.next is not none %}
       <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
     {% else %}
       <span class="btn btn-ghost is-disabled">次 →</span>
@@ -39,6 +41,9 @@
             <div class="thumb-placeholder"></div>
           {% endif %}
           <div class="work-badges">
+            {% if sort_id == "rank" and (w.api_rank or w._tmp_rank) %}
+              <span class="badge badge-rank">#{{ w.api_rank or w._tmp_rank }}</span>
+            {% endif %}
             {% if w._has_img %}
               <span class="badge badge-img">🖼️ サンプル画像あり</span>
             {% endif %}
@@ -62,7 +67,7 @@
 
   {% if pager and pager.page %}
   <div class="pager pager--bottom">
-    {% if pager.prev %}
+    {% if pager.prev is not none %}
       <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
     {% else %}
       <span class="btn btn-ghost is-disabled">← 前</span>
@@ -70,7 +75,7 @@
 
     <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
 
-    {% if pager.next %}
+    {% if pager.next is not none %}
       <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
     {% else %}
       <span class="btn btn-ghost is-disabled">次 →</span>
