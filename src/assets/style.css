@@ -520,6 +520,11 @@ button{ font:inherit; }
 
 .no-scroll{ overflow:hidden; }
 
+/* hidden 属性を優先して Lightbox を確実に非表示にする */
+.lightbox[hidden]{
+  display:none !important;
+}
+
 .lightbox{
   position:fixed;
   inset:0;
@@ -528,6 +533,26 @@ button{ font:inherit; }
   align-items:center;
   justify-content:center;
   z-index:1000;
+}
+
+/* 公式ページボタン（目立たせる） */
+.btn-official{
+  border-color: rgba(250, 204, 21, .55);
+  background: rgba(250, 204, 21, .15);
+  color: rgb(250, 204, 21);
+  font-weight: 800;
+}
+.btn-official:hover{
+  background: rgba(250, 204, 21, .22);
+}
+
+/* サムネ下に置くCTA */
+.cta--under-hero{
+  margin-top: 10px;
+}
+.cta--under-hero .btn{
+  width: 100%;
+  justify-content: center;
 }
 .lightbox-stage{
   width: min(1100px, 96vw);
