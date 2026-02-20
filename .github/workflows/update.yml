@@ -2,10 +2,10 @@ name: 🔄自動更新（API取得→ビルド→コミット）
 
 on:
   workflow_dispatch:
-  #消すschedule:
+  schedule:
     # 毎日 03:15 (JST 12:15) に実行したい例
     # GitHub ActionsのcronはUTCなので注意
-    #消す- cron: '0 15 * * *'
+    - cron: '0 15 * * *'
 
 permissions:
   contents: write
@@ -37,11 +37,32 @@ jobs:
 
       - name: Sanitize sample images (NO IMAGE / NOW PRINTING)
         run: |
-          python src/sanitize_noimage_samples.py --learn
+          python src/sanitize_noimage_samples.py
 
       - name: Build site -> docs/
         run: |
           python src/build.py
+
+      - name: Catalog stats (Actions Summary)
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          p = Path('src/data/works_manifest.json')
+          if p.exists():
+              mf = json.loads(p.read_text(encoding='utf-8'))
+              print('## 📊 Catalog stats')
+              print(f"- updated_at: {mf.get('updated_at')}")
+              print(f"- count: {mf.get('count')}")
+              print(f"- with_sample_images: {mf.get('with_sample_images')}")
+              print(f"- with_sample_movies: {mf.get('with_sample_movies')}")
+              chunks = mf.get('chunks') or []
+              print(f"- chunks: {len(chunks)}")
+          else:
+              print('## 📊 Catalog stats')
+              print('- works_manifest.json not found')
+          PY
 
       - name: Commit & Push if changed
         run: |
@@ -58,6 +79,3 @@ jobs:
 
           git commit -m "auto: update data + rebuild"
           git push
-
-
-
