@@ -881,46 +881,27 @@ def main() -> None:
             sitemap_urls.append(path_from_root)
 
     # ランキング順（API rank）
-    ranked = list(works_sorted)
-    has_any_rank = any(w.get("api_rank") is not None for w in ranked)
-    if has_any_rank:
-        def rank_sort_key(w: Dict[str, Any]):
-            ar = w.get("api_rank")
-            rel_ts = w.get("_release_ts") or 0
-            if ar is None:
-                return (1, 10**9, -rel_ts)
-            try:
-                ar_i = int(ar)
-            except Exception:
-                ar_i = 10**9
-            return (0, ar_i, -rel_ts)
-
-        ranked.sort(key=rank_sort_key)
-        # api_rank がある作品だけ badge を出す（テンプレ側で w.api_rank を参照）
-        for w in ranked:
-            w.pop("_tmp_rank", None)
+    ranked = [w for w in works_sorted if w.get("api_rank") is not None]
+    if ranked:
+        ranked.sort(key=lambda w: w.get("api_rank") or 10**9)
+        for i, w in enumerate(ranked, start=1):
+            w["_tmp_rank"] = i
     else:
-        # fallback: api_rank が全件無い場合は「最新順」を暫定ランキングとして番号を振る
+        # fallback: if api_rank is missing, keep latest order as a temporary ranking
+        ranked = list(works_sorted)
         for i, w in enumerate(ranked, start=1):
             w["_tmp_rank"] = i
 
     render_sort_pages(key="rank", heading="ランキング", works_list=ranked)
 
-    # レビュー順
-    # 優先: (1) review_average が取れる作品は 平均点→件数→新しさ
-    #      (2) review_average が無い場合でも、APIの sort=review で拾えた作品は api_review_rank を使って並べる
-    #      (3) それも無い場合は新しい順にフォールバック
+    # レビュー順（平均点→件数→新しさ）
     def review_sort_key(w: Dict[str, Any]):
         avg = w.get("review_average")
         cnt = w.get("review_count")
-        api_r = w.get("api_review_rank")
-        rel_ts = w.get("_release_ts") or 0
-
-        if avg is not None:
-            return (0, 0, -(avg or 0.0), -(cnt or 0), -rel_ts)
-        if api_r is not None:
-            return (0, 1, int(api_r), 0, -rel_ts)
-        return (1, 9, 10**9, 0, -rel_ts)
+        # missing goes last
+        if avg is None:
+            return (1, 0.0, 0, w.get("_release_ts") or 0)
+        return (0, -(avg or 0.0), -(cnt or 0), -(w.get("_release_ts") or 0))
 
     reviewed = list(works_sorted)
     reviewed.sort(key=review_sort_key)
@@ -1055,6 +1036,23 @@ def main() -> None:
     build_sitemap(base_url, sitemap_urls)
     build_robots(base_url)
     build_rss(base_url, site_name, works_sorted)
+
+
+    # ===== Status (for GitHub Pages / GUI remote view) =====
+    # docs/status.json を出力（GitHub Pages 経由で参照できる）
+    try:
+        status = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "site_name": site_name,
+            "base_url": base_url,
+            "updated_at": str((meta or {}).get("updated_at") or ""),
+            "count": int((meta or {}).get("count") or len(works)),
+            "with_sample_images": int((meta or {}).get("with_sample_images") or 0),
+            "with_sample_movies": int((meta or {}).get("with_sample_movies") or 0),
+        }
+        write_json(OUT / "status.json", status)
+    except Exception as e:
+        print(f"WARN: could not write status.json: {e}")
 
     print(f"OK: built docs at {OUT}")
 
