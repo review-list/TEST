@@ -47,6 +47,7 @@ FLOOR = "videoa"
 HITS = 100            # 最大100
 DATE_PAGES = 5        # 新着（date）を何ページ取るか（100×5=500件）
 RANK_PAGES = 3        # 人気（rank）を何ページ取るか（100×3=300件）
+REVIEW_PAGES = 2      # レビュー（review）を何ページ取るか（100×2=200件）
 SLEEP_SEC = 0.6       # API負荷回避
 TIMEOUT = 30
 
@@ -89,6 +90,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--hits", type=int, default=HITS, help="hits per page (max 100)")
     p.add_argument("--date-pages", type=int, default=DATE_PAGES, help="pages for sort=date")
     p.add_argument("--rank-pages", type=int, default=RANK_PAGES, help="pages for sort=rank")
+    p.add_argument("--review-pages", type=int, default=REVIEW_PAGES, help="pages for sort=review")
     p.add_argument("--sleep", type=float, default=SLEEP_SEC, help="sleep seconds between calls")
     p.add_argument("--timeout", type=int, default=TIMEOUT, help="request timeout seconds")
     p.add_argument(
@@ -355,14 +357,16 @@ def _merge_work(old: Optional[Dict[str, Any]], new: Dict[str, Any]) -> Dict[str,
         merged["sample_movie_size"] = new["sample_movie_size"]
 
     # review/prices
-    for k in ["review_count", "review_average", "price_min", "api_rank"]:
+    for k in ["review_count", "review_average", "price_min", "api_rank", "api_review_rank"]:
         if new.get(k) is not None:
             merged[k] = new.get(k)
 
     return merged
 
 
-def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None) -> Dict[str, Any]:
+def _make_work_from_item(
+    item: Dict[str, Any], *, api_rank: Optional[int] = None, api_review_rank: Optional[int] = None
+) -> Dict[str, Any]:
     content_id = _clean_str(item.get("content_id"))
     title = _clean_str(item.get("title"))
     url = _clean_str(item.get("affiliateURL") or item.get("affiliateUrl") or item.get("URL") or item.get("url"))
@@ -445,6 +449,7 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
         "review_average": review_average,
         "price_min": price_min,
         "api_rank": api_rank,
+        "api_review_rank": api_review_rank,
     }
 
     # 余計なNoneを減らす
@@ -472,6 +477,8 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
         w.pop("price_min", None)
     if w["api_rank"] is None:
         w.pop("api_rank", None)
+    if w["api_review_rank"] is None:
+        w.pop("api_review_rank", None)
 
     return w
 
@@ -493,6 +500,7 @@ def main() -> None:
 
     date_pages = max(0, int(args.date_pages))
     rank_pages = max(0, int(args.rank_pages))
+    review_pages = max(0, int(args.review_pages))
     sleep_sec = float(args.sleep)
     timeout = int(args.timeout)
 
@@ -510,6 +518,11 @@ def main() -> None:
 
     meta, existing_works = _load_existing()
     by_id: Dict[str, Dict[str, Any]] = {str(w.get("id")): w for w in existing_works if w.get("id")}
+
+    # api_rank / api_review_rank は「その日のAPI上の順位」なので、古い値が残らないよう毎回クリア。
+    for w in by_id.values():
+        w.pop("api_rank", None)
+        w.pop("api_review_rank", None)
 
     # fullモードで「作品数を増やさない」= 現在の件数に上限を固定
     max_total = int(args.max_total) if int(args.max_total) > 0 else MAX_TOTAL_WORKS
@@ -530,34 +543,69 @@ def main() -> None:
     total_new = 0
     total_updated = 0
 
-    def process(sort: str, pages: int, set_rank: bool) -> None:
+    # fetchで拾った作品（既存に無いものも含む）を集約しておく。
+    # TRIM時に「新着+ランキング+レビュー」を混ぜるために使う。
+    fetched_by_id: Dict[str, Dict[str, Any]] = {}
+    date_ids: List[str] = []
+    rank_ids: List[str] = []
+    review_ids: List[str] = []
+
+    def _append_unique(lst: List[str], wid: str) -> None:
+        if wid and wid not in lst:
+            lst.append(wid)
+
+    def process(sort: str, pages: int, rank_field: Optional[str]) -> None:
         nonlocal total_new, total_updated
         offset = 1
         rank_counter = 1
         for p in range(pages):
-            items = _fetch_page(
-                sess,
-                sort=sort,
-                offset=offset,
-                hits=hits,
-                site=site,
-                service=service,
-                floor=floor,
-                timeout=timeout,
-            )
+            try:
+                items = _fetch_page(
+                    sess,
+                    sort=sort,
+                    offset=offset,
+                    hits=hits,
+                    site=site,
+                    service=service,
+                    floor=floor,
+                    timeout=timeout,
+                )
+            except Exception as e:
+                # sort=review などが環境によって失敗するケースがあるため、ここでは落とさず警告で継続。
+                print(f"WARN: fetch failed: sort={sort} offset={offset}: {e}")
+                break
             if not items:
                 break
             for idx, item in enumerate(items):
                 wid = _clean_str(item.get("content_id"))
                 if not wid:
                     continue
-                api_rank = (rank_counter + idx) if set_rank else None
-                new_w = _make_work_from_item(item, api_rank=api_rank)
+
+                api_pos = (rank_counter + idx) if rank_field else None
+                new_w = _make_work_from_item(
+                    item,
+                    api_rank=(api_pos if rank_field == "api_rank" else None),
+                    api_review_rank=(api_pos if rank_field == "api_review_rank" else None),
+                )
+
+                # fetched_by_id に集約（複数sortで同一作品が来るのでmerge）
+                if wid in fetched_by_id:
+                    fetched_by_id[wid] = _merge_work(fetched_by_id[wid], new_w)
+                else:
+                    fetched_by_id[wid] = new_w
+
+                if sort == "date":
+                    _append_unique(date_ids, wid)
+                elif sort == "rank":
+                    _append_unique(rank_ids, wid)
+                elif sort == "review":
+                    _append_unique(review_ids, wid)
+
                 old_w = by_id.get(wid)
 
                 if old_w is None:
                     # update-only のときは「新規は追加しない」
-                    if full_mode and (not update_only):
+                    if not update_only:
                         by_id[wid] = new_w
                         total_new += 1
                 else:
@@ -572,28 +620,103 @@ def main() -> None:
             time.sleep(sleep_sec)
 
     # 1) 新着
-    process("date", date_pages, set_rank=False)
+    process("date", date_pages, rank_field=None)
     # 2) 人気（api_rank付与）
-    process("rank", rank_pages, set_rank=True)
+    process("rank", rank_pages, rank_field="api_rank")
+    # 3) レビュー（api_review_rank付与）
+    if review_pages > 0:
+        process("review", review_pages, rank_field="api_review_rank")
 
     # 保存対象 works
-    if update_only:
-        # 既存の順序/件数を維持（作品数を増やさない）
-        ordered_ids = [str(w.get("id")) for w in existing_works if w.get("id")]
-        works = [by_id[i] for i in ordered_ids if i in by_id]
+    # trim_to が有効な場合は「新着 + ランキング + レビュー」を混ぜた “テスト用カタログ” を作る。
+    # 100件でも 3つの並び（最新/ランキング/レビュー）が同じにならないことを狙う。
+    if trim_to > 0:
+        # バケツ配分（最低でも rank/review が 1件は入るように）
+        if trim_to <= 1:
+            n_date, n_rank, n_review = 1, 0, 0
+        elif trim_to == 2:
+            n_date, n_rank, n_review = 1, 1, 0
+        else:
+            n_rank = max(1, int(round(trim_to * 0.2)))
+            n_review = max(1, int(round(trim_to * 0.2)))
+            n_date = trim_to - n_rank - n_review
+            if n_date < 1:
+                n_date = 1
+                # 調整
+                if n_rank > 1:
+                    n_rank -= 1
+                else:
+                    n_review = max(0, n_review - 1)
+
+        def take_unique(src: List[str], limit: int, seen: set[str]) -> List[str]:
+            out: List[str] = []
+            for wid in src:
+                if wid in seen:
+                    continue
+                seen.add(wid)
+                out.append(wid)
+                if limit and len(out) >= limit:
+                    break
+            return out
+
+        seen: set[str] = set()
+        selected_ids: List[str] = []
+        selected_ids += take_unique(date_ids, n_date, seen)
+        selected_ids += take_unique(rank_ids, n_rank, seen)
+        selected_ids += take_unique(review_ids, n_review, seen)
+
+        # まだ足りなければ埋める（優先: date -> rank -> review）
+        if len(selected_ids) < trim_to:
+            selected_ids += take_unique(date_ids, 0, seen)
+        if len(selected_ids) < trim_to:
+            selected_ids += take_unique(rank_ids, 0, seen)
+        if len(selected_ids) < trim_to:
+            selected_ids += take_unique(review_ids, 0, seen)
+
+        # 取得結果が少ない場合の保険（既存を最後に足す）
+        if len(selected_ids) < trim_to:
+            for w in existing_works:
+                wid = str(w.get("id") or "")
+                if not wid or wid in seen:
+                    continue
+                seen.add(wid)
+                selected_ids.append(wid)
+                if len(selected_ids) >= trim_to:
+                    break
+
+        # selected_ids の順で works を組み立てる（既存と fetched をmerge）
+        works: List[Dict[str, Any]] = []
+        total_new_trim = 0
+        for wid in selected_ids[:trim_to]:
+            base = by_id.get(wid)
+            fetched = fetched_by_id.get(wid)
+            if base is None and fetched is None:
+                continue
+            if base is None and fetched is not None:
+                total_new_trim += 1
+                works.append(fetched)
+            elif base is not None and fetched is None:
+                works.append(base)
+            else:
+                works.append(_merge_work(base, fetched))
+
+        # trimミックスで増えた分は new に足してログに反映
+        total_new += total_new_trim
+
     else:
-        works = list(by_id.values())
-        # 件数上限（新しい順優先）
-        def sort_key(w: Dict[str, Any]) -> str:
-            return _parse_date_for_sort(_clean_str(w.get("release_date")))
+        if update_only:
+            # 既存の順序/件数を維持（作品数を増やさない）
+            ordered_ids = [str(w.get("id")) for w in existing_works if w.get("id")]
+            works = [by_id[i] for i in ordered_ids if i in by_id]
+        else:
+            works = list(by_id.values())
+            # 件数上限（新しい順優先）
+            def sort_key(w: Dict[str, Any]) -> str:
+                return _parse_date_for_sort(_clean_str(w.get("release_date")))
 
-        works.sort(key=sort_key, reverse=True)
-        if len(works) > max_total:
-            works = works[:max_total]
-
-    # 追加の切り詰め（テスト用）
-    if trim_to and len(works) > trim_to:
-        works = works[:trim_to]
+            works.sort(key=sort_key, reverse=True)
+            if len(works) > max_total:
+                works = works[:max_total]
 
     meta["site_name"] = meta.get("site_name") or SITE_NAME
 
