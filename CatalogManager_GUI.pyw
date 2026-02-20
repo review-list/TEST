@@ -7,7 +7,7 @@
 - 現在の作品数 / 画像あり / 動画あり / works.json更新日時 の表示
 - 更新モード（維持更新OFF / 追加更新ON）と、最大件数（テスト）設定
 - GitHub Actions の自動更新時刻（workflow cron）の表示・変更
-- fetch / build / fetch→build / sanitize / 件数削除（今のworks.json）
+- fetch / build / fetch→sanitize→build / sanitize(--learn) / 件数削除（今のデータ）
 
 補足
 - 環境変数が無い場合は「APIキー（ローカル）」に保存して使えます
@@ -26,6 +26,10 @@ import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, List
+
+import urllib.request
+import urllib.error
+import webbrowser
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -53,7 +57,7 @@ def repo_root(start: Optional[Path] = None) -> Path:
 # src/ を import 可能にして、works_store を利用（chunk分割データ対応）
 try:
     _ROOT_FOR_IMPORT = repo_root(Path(__file__).resolve().parent)
-    _SRC_FOR_IMPORT = _ROOT_FOR_IMPORT / 'src'
+    _SRC_FOR_IMPORT = _ROOT_FOR_IMPORT / "src"
     if _SRC_FOR_IMPORT.is_dir() and str(_SRC_FOR_IMPORT) not in sys.path:
         sys.path.insert(0, str(_SRC_FOR_IMPORT))
     from works_store import load_bundle, save_bundle, paths as works_paths
@@ -154,13 +158,13 @@ def read_works_stats(data_dir: Path, legacy_works_path: Path) -> Tuple[int, int,
         manifest_path, _, _legacy = works_paths(data_dir)
         if manifest_path.exists():
             try:
-                mf = json.loads(manifest_path.read_text(encoding='utf-8'))
+                mf = json.loads(manifest_path.read_text(encoding="utf-8"))
                 if isinstance(mf, dict):
-                    count = int(mf.get('count') or 0)
-                    with_imgs = int(mf.get('with_sample_images') or 0)
-                    with_mov = int(mf.get('with_sample_movies') or 0)
+                    count = int(mf.get("count") or 0)
+                    with_imgs = int(mf.get("with_sample_images") or 0)
+                    with_mov = int(mf.get("with_sample_movies") or 0)
                     mtime = manifest_path.stat().st_mtime
-                    mtime_s = datetime.fromtimestamp(mtime, tz=JST).strftime('%Y-%m-%d %H:%M:%S')
+                    mtime_s = datetime.fromtimestamp(mtime, tz=JST).strftime("%Y-%m-%d %H:%M:%S")
                     return count, with_imgs, with_mov, mtime_s
             except Exception:
                 pass
@@ -168,28 +172,28 @@ def read_works_stats(data_dir: Path, legacy_works_path: Path) -> Tuple[int, int,
     # legacy works.json
     works_path = legacy_works_path
     if not works_path.exists():
-        return 0, 0, 0, '(no works data)'
+        return 0, 0, 0, "(no works data)"
 
-    j = json.loads(works_path.read_text(encoding='utf-8'))
-    works = j.get('works') or []
+    j = json.loads(works_path.read_text(encoding="utf-8"))
+    works = j.get("works") or []
     if not isinstance(works, list):
-        return 0, 0, 0, '(invalid works.json)'
+        return 0, 0, 0, "(invalid works.json)"
 
     def has_imgs(w: Dict[str, Any]) -> bool:
-        for k in ['sample_images_large', 'sample_images_small', 'sample_images']:
+        for k in ["sample_images_large", "sample_images_small", "sample_images"]:
             v = w.get(k)
             if isinstance(v, list) and any(isinstance(x, str) and x.strip() for x in v):
                 return True
         return False
 
     def has_mov(w: Dict[str, Any]) -> bool:
-        return bool(w.get('sample_movie'))
+        return bool(w.get("sample_movie"))
 
     with_imgs = sum(1 for w in works if isinstance(w, dict) and has_imgs(w))
     with_mov = sum(1 for w in works if isinstance(w, dict) and has_mov(w))
 
     mtime = works_path.stat().st_mtime
-    mtime_s = datetime.fromtimestamp(mtime, tz=JST).strftime('%Y-%m-%d %H:%M:%S')
+    mtime_s = datetime.fromtimestamp(mtime, tz=JST).strftime("%Y-%m-%d %H:%M:%S")
     return len(works), with_imgs, with_mov, mtime_s
 
 
@@ -296,30 +300,36 @@ def trim_works_data(data_dir: Path, legacy_works_path: Path, n: int) -> int:
         meta, works = load_bundle(data_dir)
         if works:
             kept = works[:n]
-            chunk_size = int(meta.get('chunk_size') or 500) if isinstance(meta, dict) else 500
-            save_bundle(data_dir, meta if isinstance(meta, dict) else {}, kept, chunk_size=chunk_size, cleanup_legacy=True)
+            chunk_size = int(meta.get("chunk_size") or 500) if isinstance(meta, dict) else 500
+            save_bundle(
+                data_dir,
+                meta if isinstance(meta, dict) else {},
+                kept,
+                chunk_size=chunk_size,
+                cleanup_legacy=True,
+            )
             return len(kept)
 
     # legacy works.json
     works_path = legacy_works_path
     if not works_path.exists():
         return 0
-    j = json.loads(works_path.read_text(encoding='utf-8'))
-    works = j.get('works') or []
+    j = json.loads(works_path.read_text(encoding="utf-8"))
+    works = j.get("works") or []
     if not isinstance(works, list):
         return 0
 
     def key(w: Dict[str, Any]) -> str:
-        for k in ['release_date', 'date']:
+        for k in ["release_date", "date"]:
             v = w.get(k)
             if isinstance(v, str):
                 return v
-        return ''
+        return ""
 
     works_sorted = sorted([w for w in works if isinstance(w, dict)], key=key, reverse=True)
     kept = works_sorted[:n]
-    j['works'] = kept
-    j['_trimmed_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S %z')
+    j["works"] = kept
+    j["_trimmed_at"] = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S %z")
     save_json(works_path, j)
     return len(kept)
 
@@ -370,6 +380,14 @@ class App(ttk.Frame):
         self.status_actions_time = tk.StringVar(value="-")
         self.status_actions_detail = tk.StringVar(value="-")
 
+        # remote (GitHub) display
+        self.var_remote_manifest_url = tk.StringVar(value=str((self.cfg.get("remote") or {}).get("manifest_url", "")))
+        self.status_remote_works = tk.StringVar(value="-")
+        self.status_remote_imgs = tk.StringVar(value="-")
+        self.status_remote_mov = tk.StringVar(value="-")
+        self.status_remote_updated = tk.StringVar(value="-")
+        self.status_remote_note = tk.StringVar(value="")
+
         # internal
         self._auto_job: Optional[str] = None
         self._is_running = False
@@ -377,6 +395,8 @@ class App(ttk.Frame):
         self._build_ui()
         self._bind_auto_apply()
         self.reload_all(show_toast=False)
+        if self.var_remote_manifest_url.get().strip():
+            self.load_remote_stats()
 
     # ---------- UI ----------
     def _build_ui(self) -> None:
@@ -416,7 +436,9 @@ class App(ttk.Frame):
 
         def add_row(r: int, label: str, var: tk.StringVar, value_font=None):
             ttk.Label(st_grid, text=label).grid(row=r, column=0, sticky="w", pady=2)
-            ttk.Label(st_grid, textvariable=var, font=value_font, justify="left").grid(row=r, column=1, sticky="w", pady=2)
+            ttk.Label(st_grid, textvariable=var, font=value_font, justify="left").grid(
+                row=r, column=1, sticky="w", pady=2
+            )
 
         add_row(0, "作品数", self.status_works, value_font=("Segoe UI", 11, "bold"))
         add_row(1, "画像あり", self.status_imgs)
@@ -427,6 +449,32 @@ class App(ttk.Frame):
         add_row(6, "自動更新（Actions）", self.status_actions_time, value_font=("Segoe UI", 11, "bold"))
         add_row(7, "cron / workflow", self.status_actions_detail)
 
+
+        # ---- GitHub Remote ----
+        rst = ttk.LabelFrame(left, text="GitHub（リモート）")
+        rst.pack(fill="x", pady=(0, 10))
+
+        rgrid = ttk.Frame(rst)
+        rgrid.pack(fill="x", padx=10, pady=10)
+        rgrid.columnconfigure(1, weight=1)
+
+        def add_rrow(r: int, label: str, var: tk.StringVar, value_font=None):
+            ttk.Label(rgrid, text=label).grid(row=r, column=0, sticky="w", pady=2)
+            ttk.Label(rgrid, textvariable=var, font=value_font, justify="left").grid(
+                row=r, column=1, sticky="w", pady=2
+            )
+
+        add_rrow(0, "更新日時", self.status_remote_updated, value_font=("Segoe UI", 11, "bold"))
+        add_rrow(1, "作品数", self.status_remote_works)
+        add_rrow(2, "画像あり", self.status_remote_imgs)
+        add_rrow(3, "動画あり", self.status_remote_mov)
+
+        btnrow = ttk.Frame(rst)
+        btnrow.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Button(btnrow, text="リモート再読込", command=self.load_remote_stats).pack(side="left")
+        ttk.Label(btnrow, textvariable=self.status_remote_note, foreground="#555").pack(side="left", padx=(10, 0))
+        ttk.Button(btnrow, text="manifestを開く", command=self.open_remote_manifest).pack(side="right")
+
         # ---- Settings ----
         setf = ttk.LabelFrame(left, text="設定")
         setf.pack(fill="both", expand=True)
@@ -436,7 +484,9 @@ class App(ttk.Frame):
         modef.pack(fill="x", padx=12, pady=(12, 6))
         ttk.Label(modef, text="更新モード", width=18).pack(side="left")
         ttk.Radiobutton(modef, text="維持更新（OFF）", value="update", variable=self.var_mode).pack(side="left")
-        ttk.Radiobutton(modef, text="追加更新（ON）", value="full", variable=self.var_mode).pack(side="left", padx=(10, 0))
+        ttk.Radiobutton(modef, text="追加更新（ON）", value="full", variable=self.var_mode).pack(
+            side="left", padx=(10, 0)
+        )
 
         ttk.Label(
             setf,
@@ -469,6 +519,20 @@ class App(ttk.Frame):
         self.cmb_wf = ttk.Combobox(wff, textvariable=self.var_workflow_path, state="readonly")
         self.cmb_wf.pack(side="left", fill="x", expand=True)
 
+
+        # remote manifest URL
+        remotef = ttk.Frame(setf)
+        remotef.pack(fill="x", padx=12, pady=(0, 6))
+        ttk.Label(remotef, text="リモートmanifest", width=18).pack(side="left")
+        self.ent_remote = ttk.Entry(remotef, textvariable=self.var_remote_manifest_url)
+        self.ent_remote.pack(side="left", fill="x", expand=True)
+
+        ttk.Label(
+            setf,
+            text="※例: https://raw.githubusercontent.com/OWNER/REPO/main/src/data/works_manifest.json",
+            foreground="#555",
+        ).pack(fill="x", padx=12, pady=(0, 10))
+
         # API keys
         keyf = ttk.LabelFrame(setf, text="APIキー（ローカル）")
         keyf.pack(fill="x", padx=12, pady=(6, 12))
@@ -487,19 +551,27 @@ class App(ttk.Frame):
 
         krow3 = ttk.Frame(keyf)
         krow3.pack(fill="x", padx=10, pady=(4, 10))
-        ttk.Checkbutton(krow3, text="キーを表示", variable=self.var_show_keys, command=self._toggle_show_keys).pack(side="left")
+        ttk.Checkbutton(
+            krow3, text="キーを表示", variable=self.var_show_keys, command=self._toggle_show_keys
+        ).pack(side="left")
         ttk.Button(krow3, text="保存（.catalog_secrets.json）", command=self.save_keys).pack(side="right")
 
-        ttk.Label(keyf, text="※このファイルはGitHubにcommitしないでください。", foreground="#a33").pack(anchor="w", padx=10, pady=(0, 10))
+        ttk.Label(keyf, text="※このファイルはGitHubにcommitしないでください。", foreground="#a33").pack(
+            anchor="w", padx=10, pady=(0, 10)
+        )
 
         # ---- Right: Actions + Log ----
         runbox = ttk.LabelFrame(right, text="操作")
         runbox.pack(fill="x")
 
-        ttk.Button(runbox, text="取得→生成（fetch→build）", command=self.run_fetch_build).pack(fill="x", padx=12, pady=(12, 6))
+        ttk.Button(runbox, text="取得→掃除→生成（fetch→sanitize→build）", command=self.run_fetch_build).pack(
+            fill="x", padx=12, pady=(12, 6)
+        )
         ttk.Button(runbox, text="取得のみ（fetch）", command=self.run_fetch).pack(fill="x", padx=12, pady=6)
         ttk.Button(runbox, text="生成のみ（build）", command=self.run_build).pack(fill="x", padx=12, pady=6)
-        ttk.Button(runbox, text="No image掃除（sanitize）", command=self.run_sanitize).pack(fill="x", padx=12, pady=(6, 12))
+        ttk.Button(runbox, text="No image掃除（sanitize）", command=self.run_sanitize).pack(
+            fill="x", padx=12, pady=(6, 12)
+        )
 
         logbox = ttk.LabelFrame(right, text="ログ")
         logbox.pack(fill="both", expand=True, pady=(10, 0))
@@ -517,7 +589,9 @@ class App(ttk.Frame):
         foot = ttk.Frame(self)
         foot.pack(fill="x", **pad_outer)
 
-        ttk.Checkbutton(foot, text="変更したら自動保存/反映", variable=self.var_auto_apply, command=self._on_auto_apply_toggle).pack(side="left")
+        ttk.Checkbutton(
+            foot, text="変更したら自動保存/反映", variable=self.var_auto_apply, command=self._on_auto_apply_toggle
+        ).pack(side="left")
         ttk.Label(foot, textvariable=self.status_auto, foreground="#555").pack(side="left", padx=(10, 0))
 
         ttk.Button(foot, text="再読み込み", command=self.reload_all).pack(side="right")
@@ -553,7 +627,7 @@ class App(ttk.Frame):
     # ---------- auto apply ----------
     def _bind_auto_apply(self) -> None:
         # 変更が頻発するので debounce する
-        for v in [self.var_mode, self.var_trim_to, self.var_time, self.var_workflow_path]:
+        for v in [self.var_mode, self.var_trim_to, self.var_time, self.var_workflow_path, self.var_remote_manifest_url]:
             v.trace_add("write", lambda *_: self._schedule_auto_apply())
         for v in [self.var_trim_enable, self.var_apply_workflow]:
             v.trace_add("write", lambda *_: self._schedule_auto_apply())
@@ -561,6 +635,10 @@ class App(ttk.Frame):
         # Entryのフォーカスアウトでも反映（入力途中の事故を減らす）
         self.ent_trim.bind("<FocusOut>", lambda e: self._schedule_auto_apply(force=True))
         self.ent_time.bind("<FocusOut>", lambda e: self._schedule_auto_apply(force=True))
+        try:
+            self.ent_remote.bind("<FocusOut>", lambda e: self._schedule_auto_apply(force=True))
+        except Exception:
+            pass
 
     def _on_auto_apply_toggle(self) -> None:
         if self.var_auto_apply.get():
@@ -656,6 +734,9 @@ class App(ttk.Frame):
                 wf_rel = wf_rels[0]
             self.var_workflow_path.set(wf_rel)
 
+            remote = self.cfg.get("remote") or {}
+            self.var_remote_manifest_url.set(str(remote.get("manifest_url", "")).strip())
+
             # status: works
             count, with_imgs, with_mov, mtime_s = read_works_stats(self.data_dir, self.legacy_works_path)
             self.status_works.set(str(count))
@@ -715,6 +796,65 @@ class App(ttk.Frame):
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
+
+    def open_remote_manifest(self) -> None:
+        url = self.var_remote_manifest_url.get().strip()
+        if not url:
+            messagebox.showinfo("リモート", "manifest URL が未設定です")
+            return
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def load_remote_stats(self) -> None:
+        url = self.var_remote_manifest_url.get().strip()
+        if not url:
+            self.status_remote_updated.set("-")
+            self.status_remote_works.set("-")
+            self.status_remote_imgs.set("-")
+            self.status_remote_mov.set("-")
+            self.status_remote_note.set("manifest URL未設定")
+            return
+
+        self.status_remote_note.set("取得中...")
+
+        def worker():
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "CatalogManager/1.0"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    raw = resp.read().decode("utf-8", "replace")
+                mf = json.loads(raw) if raw.strip() else {}
+
+                count = int(mf.get("count") or 0)
+                with_imgs = int(mf.get("with_sample_images") or 0)
+                with_mov = int(mf.get("with_sample_movies") or 0)
+
+                updated = str(mf.get("updated_at") or "").strip()
+                updated_disp = "-"
+                if updated:
+                    try:
+                        dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                        updated_disp = dt.astimezone(JST).strftime("%Y-%m-%d %H:%M:%S") + "（JST）"
+                    except Exception:
+                        updated_disp = updated
+
+                def apply():
+                    self.status_remote_updated.set(updated_disp)
+                    self.status_remote_works.set(str(count))
+                    self.status_remote_imgs.set(str(with_imgs))
+                    self.status_remote_mov.set(str(with_mov))
+                    self.status_remote_note.set("OK")
+
+                self.master.after(0, apply)
+
+            except Exception as e:
+                def apply_err():
+                    self.status_remote_note.set(f"取得失敗: {e}")
+                self.master.after(0, apply_err)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _validate_time(self) -> str:
         t = self.var_time.get().strip()
         _ = jst_time_to_cron(t)
@@ -753,6 +893,7 @@ class App(ttk.Frame):
 
             self.cfg.setdefault("update", {})["jst_time"] = t
             self.cfg["update"]["workflow_path"] = self.var_workflow_path.get().strip()
+            self.cfg.setdefault("remote", {})["manifest_url"] = self.var_remote_manifest_url.get().strip()
             save_json(self.cfg_path, self.cfg)
 
             # apply to fetch script
@@ -787,14 +928,14 @@ class App(ttk.Frame):
         try:
             n = self._validate_trim_to()
             kept = trim_works_data(self.data_dir, self.legacy_works_path, n)
-            self.log(f"[OK] works.json を {kept} 件にしました")
+            self.log(f"[OK] データを {kept} 件にしました")
             self.reload_all(show_toast=False)
         except Exception as e:
             messagebox.showerror("件数削除エラー", str(e))
 
     # ---------- runners ----------
-    def _run_subprocess(self, script_rel: str, title: str) -> None:
-        cmd = [sys.executable, script_rel]
+    def _run_subprocess(self, script_rel: str, title: str, args: Optional[List[str]] = None) -> None:
+        cmd = [sys.executable, script_rel] + (args or [])
 
         env, missing = self._get_effective_env()
         needs_key = "fetch_to_works_fanza.py" in script_rel
@@ -805,8 +946,47 @@ class App(ttk.Frame):
                 "方法1：Windowsの環境変数に設定する\n"
                 "方法2：この画面の『APIキー（ローカル）』に入力→保存\n",
             )
-            self.log(f"[ERR] missing env: {', '.join(missing)}")
+            self.log(f"✖ missing env: {', '.join(missing)}")
             return
+
+        enc = self._preferred_encoding()
+
+        def worker():
+            self._is_running = True
+            self.log(f"\n▶ {title} 実行中...")
+
+            try:
+                p = subprocess.Popen(
+                    cmd,
+                    cwd=str(self.root),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding=enc,
+                    errors="replace",
+                    env=env,
+                )
+                assert p.stdout is not None
+
+                for line in p.stdout:
+                    self.log(self._mask_secrets_line(line.rstrip("\n")))
+
+                rc = p.wait()
+
+                if rc == 0:
+                    self.log(f"✔ {title} 完了しました")
+                else:
+                    self.log(f"✖ {title} エラーが発生しました (exit={rc})")
+
+            except Exception as e:
+                self.log(f"✖ {title} 実行中に例外発生: {e}")
+
+            finally:
+                self._is_running = False
+                self.reload_all(show_toast=False)
+
+        threading.Thread(target=worker, daemon=True).start()
+
 
         enc = self._preferred_encoding()
 
@@ -844,7 +1024,8 @@ class App(ttk.Frame):
         if not self.sanitize_path.exists():
             messagebox.showerror("見つかりません", "src/sanitize_noimage_samples.py がありません")
             return
-        self._run_subprocess("src/sanitize_noimage_samples.py", "sanitize")
+        # 署名の学習も兼ねて毎回 --learn（重くならないようキャッシュ前提）
+        self._run_subprocess("src/sanitize_noimage_samples.py", "sanitize (--learn)", args=["--learn"])
 
     def run_fetch(self) -> None:
         # 念のため、実行前に保存して反映
@@ -862,14 +1043,77 @@ class App(ttk.Frame):
                     "DMM_API_ID / DMM_AFFILIATE_ID が未設定です。\n\n"
                     "『APIキー（ローカル）』に入力→保存するか、環境変数に設定してください。",
                 )
+                self.log(f"✖ missing env: {', '.join(missing)}")
+                return
+
+            enc = self._preferred_encoding()
+            self._is_running = True
+
+            try:
+                steps = [
+                    ("fetch", "src/fetch_to_works_fanza.py", []),
+                    ("sanitize (--learn)", "src/sanitize_noimage_samples.py", ["--learn"]),
+                    ("build", "src/build.py", []),
+                ]
+
+                for title, script, args in steps:
+                    cmd = [sys.executable, script] + list(args)
+                    self.log(f"\n▶ {title} 実行中...")
+
+                    p = subprocess.Popen(
+                        cmd,
+                        cwd=str(self.root),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        encoding=enc,
+                        errors="replace",
+                        env=env,
+                    )
+                    assert p.stdout is not None
+
+                    for line in p.stdout:
+                        self.log(self._mask_secrets_line(line.rstrip("\n")))
+
+                    rc = p.wait()
+
+                    if rc == 0:
+                        self.log(f"✔ {title} 完了しました")
+                    else:
+                        self.log(f"✖ {title} エラーが発生しました (exit={rc})")
+                        break
+
+            except Exception as e:
+                self.log(f"✖ fetch→sanitize→build エラー: {e}")
+
+            finally:
+                self._is_running = False
+                self.reload_all(show_toast=False)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+        def worker():
+            env, missing = self._get_effective_env()
+            if missing:
+                messagebox.showerror(
+                    "APIキーが未設定",
+                    "DMM_API_ID / DMM_AFFILIATE_ID が未設定です。\n\n"
+                    "『APIキー（ローカル）』に入力→保存するか、環境変数に設定してください。",
+                )
                 self.log(f"[ERR] missing env: {', '.join(missing)}")
                 return
 
             enc = self._preferred_encoding()
             self._is_running = True
             try:
-                for title, script in [("fetch", "src/fetch_to_works_fanza.py"), ("build", "src/build.py")]:
-                    cmd = [sys.executable, script]
+                steps = [
+                    ("fetch", "src/fetch_to_works_fanza.py", []),
+                    ("sanitize (--learn)", "src/sanitize_noimage_samples.py", ["--learn"]),
+                    ("build", "src/build.py", []),
+                ]
+                for title, script, args in steps:
+                    cmd = [sys.executable, script] + list(args)
                     self.log(f"[RUN] {title} : {' '.join(cmd)}")
                     p = subprocess.Popen(
                         cmd,
@@ -889,7 +1133,7 @@ class App(ttk.Frame):
                     if rc != 0:
                         break
             except Exception as e:
-                self.log(f"[ERR] fetch→build {e}")
+                self.log(f"[ERR] fetch→sanitize→build {e}")
             finally:
                 self._is_running = False
                 self.reload_all(show_toast=False)
