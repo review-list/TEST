@@ -2,10 +2,10 @@ name: 🔄自動更新（API取得→ビルド→コミット）
 
 on:
   workflow_dispatch:
-  #消すschedule:
+  schedule:
     # 毎日 03:15 (JST 12:15) に実行したい例
     # GitHub ActionsのcronはUTCなので注意
-    #消す- cron: '0 15 * * *'
+    - cron: '0 15 * * *'
 
 permissions:
   contents: write
@@ -35,9 +35,9 @@ jobs:
         run: |
           python src/fetch_to_works_fanza.py
 
-      - name: Sanitize NO IMAGE / NOW PRINTING samples
+      - name: Sanitize sample images (NO IMAGE / NOW PRINTING)
         run: |
-          python src/sanitize_noimage_samples.py
+          python src/sanitize_noimage_samples.py --learn
 
       - name: Build site -> docs/
         run: |
