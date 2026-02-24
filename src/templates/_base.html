@@ -38,6 +38,7 @@
   </header>
 
   <main class="site-main">
+    <div class="container personal-sections" id="personalSections" hidden></div>
     {% block content %}{% endblock %}
   </main>
 
@@ -49,12 +50,6 @@
       {% endif %}
     </div>
   </footer>
-
-  <script>
-    window.__ROOT_PATH__ = "{{ root_path }}";
-  </script>
-  {% if js_path %}
-  <script src="{{ js_path }}"></script>
-  {% endif %}
+  <script defer src="{{ root_path }}assets/site.js"></script>
 </body>
 </html>

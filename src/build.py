@@ -288,6 +288,12 @@ def normalize_work(w: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         ww["api_rank"] = None
 
+    ww["api_review_rank"] = ww.get("api_review_rank")
+    try:
+        ww["api_review_rank"] = int(ww["api_review_rank"]) if ww["api_review_rank"] is not None else None
+    except Exception:
+        ww["api_review_rank"] = None
+
     ww["review_count"] = ww.get("review_count")
     try:
         ww["review_count"] = int(ww["review_count"]) if ww["review_count"] is not None else None
@@ -669,7 +675,6 @@ def main() -> None:
         depth = page_depth(path_from_root)
         root_path = "../" * depth
         css_path = rel(depth, "assets/style.css")
-        js_path = rel(depth, "assets/search.js")
         html = tpl_index.render(
             site_name=site_name,
             base_url=base_url,
@@ -678,9 +683,7 @@ def main() -> None:
             heading=heading,
             works=works_list,
             css_path=css_path,
-            js_path=js_path,
             root_path=root_path,
-            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active=(extra or {}).get("nav_active", ""),
             pager=pager,
             sort_tabs=(sort_tabs if (extra or {}).get("show_sort_tabs") else None),
@@ -701,7 +704,6 @@ def main() -> None:
         depth = page_depth(path_from_root)
         root_path = "../" * depth
         css_path = rel(depth, "assets/style.css")
-        js_path = rel(depth, "assets/search.js")
         html = tpl_list.render(
             site_name=site_name,
             base_url=base_url,
@@ -710,9 +712,7 @@ def main() -> None:
             heading=heading,
             items=items,
             css_path=css_path,
-            js_path=js_path,
             root_path=root_path,
-            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active=(extra or {}).get("nav_active", ""),
         )
         write_text(out_dir / "index.html", html)
@@ -741,9 +741,7 @@ def main() -> None:
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title=w.get("title") or "",
             css_path=css_path,
-            js_path=js_path,
             root_path=root_path,
-            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active="",
             w=w,
             lightbox_images=lightbox,
@@ -769,9 +767,7 @@ def main() -> None:
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title="検索",
             css_path=css_path,
-            js_path=js_path,
             root_path=root_path,
-            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             js_path=js_path,
             search_manifest_b64=search_embed.get("manifest_b64", ""),
             nav_active="search",
@@ -790,9 +786,7 @@ def main() -> None:
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title="特集",
             css_path=css_path,
-            js_path=js_path,
             root_path=root_path,
-            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active="featured",
             featured_links=[
                 {"href": f"{root_path}rank/", "title": "ランキング（API rank）"},
@@ -822,7 +816,7 @@ def main() -> None:
         path_from_root="",
         pager=pager_home,
         sort_id="latest",
-        extra={"nav_active": "home", "show_sort_tabs": True, "show_personal_sections": True},
+        extra={"nav_active": "home", "show_sort_tabs": True},
     )
 
     # legacy: /pages/1/ -> redirect to /
@@ -906,18 +900,25 @@ def main() -> None:
 
     render_sort_pages(key="rank", heading="ランキング", works_list=ranked)
 
-    # レビュー順（平均点→件数→新しさ）
+
+    # レビュー順（優先：API review順位 → 平均点→件数→新しさ）
     def review_sort_key(w: Dict[str, Any]):
+        rr = w.get("api_review_rank")
+        if rr is not None:
+            # sort=review の順位（小さいほど上位）
+            return (0, int(rr), -(w.get("_release_ts") or 0))
+
         avg = w.get("review_average")
         cnt = w.get("review_count")
-        # missing goes last
         if avg is None:
-            return (1, 0.0, 0, w.get("_release_ts") or 0)
-        return (0, -(avg or 0.0), -(cnt or 0), -(w.get("_release_ts") or 0))
+            # missing goes last
+            return (2, 0.0, 0, -(w.get("_release_ts") or 0))
+        return (1, -(avg or 0.0), -(cnt or 0), -(w.get("_release_ts") or 0))
 
     reviewed = list(works_sorted)
     reviewed.sort(key=review_sort_key)
     render_sort_pages(key="reviews", heading="レビュー順", works_list=reviewed)
+
 
     # サンプル動画あり（新しい順）
     w_mov = [w for w in works_sorted if w.get("_has_mov")]
