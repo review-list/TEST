@@ -667,3 +667,83 @@ button{ font:inherit; }
   align-items: baseline;
   gap: 10px;
 }
+
+
+/* Ranking badge position (top-left) */
+.work-rank{
+  position:absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+}
+
+/* Favorite button */
+.fav-btn{
+  position:absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(0,0,0,.35);
+  color: #fff;
+  cursor: pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  backdrop-filter: blur(6px);
+  user-select: none;
+}
+.fav-btn:hover{ background: rgba(0,0,0,.48); }
+.fav-btn.is-active{
+  border-color: rgba(250,204,21,.55);
+  background: rgba(250,204,21,.20);
+  color: #facc15;
+}
+
+/* Detail title row */
+.work-title-row{
+  display:flex;
+  align-items:flex-start;
+  gap: 10px;
+}
+.fav-btn--detail{
+  position: sticky;
+  top: 10px;
+  right: auto;
+  margin-top: 2px;
+}
+@media (max-width: 560px){
+  .work-title-row{ align-items:center; }
+  .fav-btn--detail{ position: relative; top:auto; }
+}
+
+/* Personal sections (Favorites / Recently) */
+.personal-wrap{
+  margin: 16px 0 10px;
+  display:grid;
+  gap: 14px;
+}
+.personal-block{
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.03);
+  border-radius: 14px;
+}
+.personal-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.personal-title{
+  font-size: 16px;
+  margin: 0;
+}
+.btn-sm{
+  padding: 6px 10px;
+  font-size: 12px;
+}

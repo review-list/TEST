@@ -18,7 +18,19 @@
       </div>
     {% endif %}
 
-    <h1 class="page-title work-title--detail">{{ w.title }}</h1>
+    <div class="work-title-row">
+      <h1 class="page-title work-title--detail">{{ w.title }}</h1>
+      <button class="fav-btn fav-btn--detail" id="favDetailBtn" type="button" aria-label="お気に入り" aria-pressed="false"
+        data-work-id="{{ w.id }}"
+        data-work-title="{{ (w.title or '')|e }}"
+        data-work-hero="{{ (w.hero_image or '')|e }}"
+        data-work-path="works/{{ w.id }}/"
+        data-work-maker="{{ (w.maker or '')|e }}"
+        data-work-release="{{ ((w.release_date or '')|replace(' 00:00:00',''))|e }}"
+        data-has-img="{{ 1 if w._has_img else 0 }}"
+        data-has-mov="{{ 1 if w._has_mov else 0 }}"
+      >☆</button>
+    </div>
 
     <div class="badges-row">
       {% if w._has_img %}
@@ -221,6 +233,20 @@
     <img id="lbImg" class="lightbox-img" alt="">
   </div>
 </div>
+
+
+<script>
+  window.__WORK_META__ = {
+    id: {{ w.id|tojson }},
+    title: {{ (w.title or "")|tojson }},
+    hero: {{ (w.hero_image or "")|tojson }},
+    path: {{ ("works/" ~ w.id ~ "/")|tojson }},
+    maker: {{ (w.maker or "")|tojson }},
+    release: {{ ((w.release_date or "")|replace(" 00:00:00",""))|tojson }},
+    hasImg: {{ (1 if w._has_img else 0)|tojson }},
+    hasMov: {{ (1 if w._has_mov else 0)|tojson }}
+  };
+</script>
 
 <script>
 (() => {

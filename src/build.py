@@ -669,6 +669,7 @@ def main() -> None:
         depth = page_depth(path_from_root)
         root_path = "../" * depth
         css_path = rel(depth, "assets/style.css")
+        js_path = rel(depth, "assets/search.js")
         html = tpl_index.render(
             site_name=site_name,
             base_url=base_url,
@@ -677,7 +678,9 @@ def main() -> None:
             heading=heading,
             works=works_list,
             css_path=css_path,
+            js_path=js_path,
             root_path=root_path,
+            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active=(extra or {}).get("nav_active", ""),
             pager=pager,
             sort_tabs=(sort_tabs if (extra or {}).get("show_sort_tabs") else None),
@@ -698,6 +701,7 @@ def main() -> None:
         depth = page_depth(path_from_root)
         root_path = "../" * depth
         css_path = rel(depth, "assets/style.css")
+        js_path = rel(depth, "assets/search.js")
         html = tpl_list.render(
             site_name=site_name,
             base_url=base_url,
@@ -706,7 +710,9 @@ def main() -> None:
             heading=heading,
             items=items,
             css_path=css_path,
+            js_path=js_path,
             root_path=root_path,
+            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active=(extra or {}).get("nav_active", ""),
         )
         write_text(out_dir / "index.html", html)
@@ -735,7 +741,9 @@ def main() -> None:
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title=w.get("title") or "",
             css_path=css_path,
+            js_path=js_path,
             root_path=root_path,
+            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active="",
             w=w,
             lightbox_images=lightbox,
@@ -761,7 +769,9 @@ def main() -> None:
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title="検索",
             css_path=css_path,
+            js_path=js_path,
             root_path=root_path,
+            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             js_path=js_path,
             search_manifest_b64=search_embed.get("manifest_b64", ""),
             nav_active="search",
@@ -780,7 +790,9 @@ def main() -> None:
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title="特集",
             css_path=css_path,
+            js_path=js_path,
             root_path=root_path,
+            show_personal_sections=(extra or {}).get("show_personal_sections", False),
             nav_active="featured",
             featured_links=[
                 {"href": f"{root_path}rank/", "title": "ランキング（API rank）"},
@@ -810,7 +822,7 @@ def main() -> None:
         path_from_root="",
         pager=pager_home,
         sort_id="latest",
-        extra={"nav_active": "home", "show_sort_tabs": True},
+        extra={"nav_active": "home", "show_sort_tabs": True, "show_personal_sections": True},
     )
 
     # legacy: /pages/1/ -> redirect to /
@@ -1036,23 +1048,6 @@ def main() -> None:
     build_sitemap(base_url, sitemap_urls)
     build_robots(base_url)
     build_rss(base_url, site_name, works_sorted)
-
-
-    # ===== Status (for GitHub Pages / GUI remote view) =====
-    # docs/status.json を出力（GitHub Pages 経由で参照できる）
-    try:
-        status = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "site_name": site_name,
-            "base_url": base_url,
-            "updated_at": str((meta or {}).get("updated_at") or ""),
-            "count": int((meta or {}).get("count") or len(works)),
-            "with_sample_images": int((meta or {}).get("with_sample_images") or 0),
-            "with_sample_movies": int((meta or {}).get("with_sample_movies") or 0),
-        }
-        write_json(OUT / "status.json", status)
-    except Exception as e:
-        print(f"WARN: could not write status.json: {e}")
 
     print(f"OK: built docs at {OUT}")
 

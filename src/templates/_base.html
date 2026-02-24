@@ -49,5 +49,12 @@
       {% endif %}
     </div>
   </footer>
+
+  <script>
+    window.__ROOT_PATH__ = "{{ root_path }}";
+  </script>
+  {% if js_path %}
+  <script src="{{ js_path }}"></script>
+  {% endif %}
 </body>
 </html>

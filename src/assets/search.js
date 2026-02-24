@@ -222,6 +222,23 @@
     const thumb = document.createElement("div");
     thumb.className = "work-thumb";
 
+    // Favorite button (works on any page)
+    const fav = document.createElement("button");
+    fav.className = "fav-btn";
+    fav.type = "button";
+    fav.textContent = "☆";
+    fav.setAttribute("aria-label", "お気に入り");
+    fav.setAttribute("aria-pressed", "false");
+    fav.dataset.workId = it.id;
+    fav.dataset.workTitle = it.title || it.id;
+    fav.dataset.workHero = it.hero_image || "";
+    fav.dataset.workPath = it.path || ("works/" + it.id + "/");
+    fav.dataset.workMaker = it.maker || "";
+    fav.dataset.workRelease = (it.release_date || "").replace(" 00:00:00","");
+    fav.dataset.hasImg = it.has_img ? "1" : "0";
+    fav.dataset.hasMov = it.has_mov ? "1" : "0";
+    thumb.appendChild(fav);
+
     if (it.hero_image) {
       const img = document.createElement("img");
       img.loading = "lazy";
@@ -416,4 +433,292 @@
   if (!elQ || !elResults || !elStatus || !elSentinel) return;
 
   init();
+})();
+
+
+// =============================
+// Favorites / Recently Viewed (localStorage)
+// =============================
+(() => {
+  const ROOT = window.__ROOT_PATH__ || "../";
+
+  const KEY_FAVS = "rc_favs_v1";
+  const KEY_FAV_META = "rc_fav_meta_v1";
+  const KEY_RECENT = "rc_recent_v1";
+  const MAX_RECENT = 30;
+
+  const $ = (id) => document.getElementById(id);
+
+  function loadJSON(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      return JSON.parse(raw);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function saveJSON(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (_) {}
+  }
+
+  function getFavList() {
+    const v = loadJSON(KEY_FAVS, []);
+    return Array.isArray(v) ? v : [];
+  }
+
+  function getFavMeta() {
+    const v = loadJSON(KEY_FAV_META, {});
+    return v && typeof v === "object" ? v : {};
+  }
+
+  function isFav(id) {
+    return getFavList().includes(id);
+  }
+
+  function setFavUI(btn, on) {
+    if (!btn) return;
+    btn.classList.toggle("is-active", !!on);
+    btn.textContent = on ? "★" : "☆";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  function readMetaFromBtn(btn) {
+    const ds = btn.dataset || {};
+    const id = ds.workId || ds.workid || "";
+    if (!id) return null;
+    return {
+      id,
+      title: ds.workTitle || "",
+      hero: ds.workHero || "",
+      path: ds.workPath || ("works/" + id + "/"),
+      maker: ds.workMaker || "",
+      release: (ds.workRelease || "").replace(" 00:00:00", ""),
+      hasImg: ds.hasImg === "1",
+      hasMov: ds.hasMov === "1",
+    };
+  }
+
+  function upsertFav(meta) {
+    const list = getFavList();
+    const metaMap = getFavMeta();
+    if (!list.includes(meta.id)) list.unshift(meta.id);
+    metaMap[meta.id] = meta;
+    saveJSON(KEY_FAVS, list);
+    saveJSON(KEY_FAV_META, metaMap);
+  }
+
+  function removeFav(id) {
+    const list = getFavList().filter((x) => x !== id);
+    saveJSON(KEY_FAVS, list);
+    // metaは残す（再追加時に復元できる）
+  }
+
+  function toggleFav(meta) {
+    if (!meta || !meta.id) return;
+    const on = isFav(meta.id);
+    if (on) removeFav(meta.id);
+    else upsertFav(meta);
+  }
+
+  function addRecent(meta) {
+    if (!meta || !meta.id) return;
+    const rec = loadJSON(KEY_RECENT, []);
+    const arr = Array.isArray(rec) ? rec : [];
+    const now = Date.now();
+    const item = { ...meta, ts: now };
+
+    const filtered = arr.filter((x) => x && x.id !== meta.id);
+    filtered.unshift(item);
+    const trimmed = filtered.slice(0, MAX_RECENT);
+    saveJSON(KEY_RECENT, trimmed);
+  }
+
+  function updateAllFavButtons() {
+    const favs = new Set(getFavList());
+    document.querySelectorAll(".fav-btn").forEach((btn) => {
+      const meta = readMetaFromBtn(btn);
+      if (!meta) return;
+      setFavUI(btn, favs.has(meta.id));
+    });
+  }
+
+  function badgeHtml(meta) {
+    const parts = [];
+    if (meta.hasImg) parts.push('<span class="badge badge-img">🖼️ サンプル画像あり</span>');
+    if (meta.hasMov) parts.push('<span class="badge badge-mov">🎬 サンプル動画あり</span>');
+    return parts.join("");
+  }
+
+  function createCard(meta) {
+    const a = document.createElement("a");
+    a.className = "work-card";
+    a.href = ROOT + (meta.path || ("works/" + meta.id + "/"));
+    a.setAttribute("aria-label", meta.title || meta.id);
+
+    const thumb = document.createElement("div");
+    thumb.className = "work-thumb";
+
+    const fav = document.createElement("button");
+    fav.className = "fav-btn";
+    fav.type = "button";
+    fav.textContent = "☆";
+    fav.setAttribute("aria-label", "お気に入り");
+    fav.setAttribute("aria-pressed", "false");
+    fav.dataset.workId = meta.id;
+    fav.dataset.workTitle = meta.title || meta.id;
+    fav.dataset.workHero = meta.hero || "";
+    fav.dataset.workPath = meta.path || ("works/" + meta.id + "/");
+    fav.dataset.workMaker = meta.maker || "";
+    fav.dataset.workRelease = meta.release || "";
+    fav.dataset.hasImg = meta.hasImg ? "1" : "0";
+    fav.dataset.hasMov = meta.hasMov ? "1" : "0";
+    thumb.appendChild(fav);
+
+    if (meta.hero) {
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.src = meta.hero;
+      img.alt = meta.title || meta.id;
+      thumb.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "thumb-placeholder";
+      thumb.appendChild(ph);
+    }
+
+    const badges = document.createElement("div");
+    badges.className = "work-badges";
+    badges.innerHTML = badgeHtml(meta);
+    thumb.appendChild(badges);
+
+    const wm = document.createElement("div");
+    wm.className = "work-meta";
+    const t = document.createElement("div");
+    t.className = "work-title";
+    t.textContent = meta.title || meta.id;
+    const sub = document.createElement("div");
+    sub.className = "work-sub";
+    const bits = [];
+    if (meta.release) bits.push(meta.release);
+    if (meta.maker) bits.push(meta.maker);
+    sub.innerHTML = bits.map((x) => `<span class="muted">${escapeHtml(String(x))}</span>`).join('<span class="dot">•</span>');
+    wm.appendChild(t);
+    wm.appendChild(sub);
+
+    a.appendChild(thumb);
+    a.appendChild(wm);
+    return a;
+  }
+
+  function escapeHtml(s) {
+    return s
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function renderPersonal() {
+    const wrap = $("personalWrap");
+    const recentGrid = $("recentGrid");
+    const favGrid = $("favGrid");
+    const recentBlock = $("recentBlock");
+    const favBlock = $("favBlock");
+    if (!wrap || !recentGrid || !favGrid || !recentBlock || !favBlock) return;
+
+    // Recent
+    const rec = loadJSON(KEY_RECENT, []);
+    const recArr = Array.isArray(rec) ? rec : [];
+    recentGrid.innerHTML = "";
+    const recItems = recArr.slice(0, 8);
+    recItems.forEach((m) => {
+      if (!m || !m.id) return;
+      recentGrid.appendChild(createCard(m));
+    });
+    recentBlock.hidden = recItems.length === 0;
+
+    // Favs
+    const favIds = getFavList();
+    const metaMap = getFavMeta();
+    favGrid.innerHTML = "";
+    const favItems = favIds
+      .map((id) => metaMap[id])
+      .filter(Boolean)
+      .slice(0, 8);
+    favItems.forEach((m) => favGrid.appendChild(createCard(m)));
+    favBlock.hidden = favItems.length === 0;
+
+    wrap.hidden = (recItems.length === 0 && favItems.length === 0);
+
+    updateAllFavButtons();
+  }
+
+  // Click handlers
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest && e.target.closest(".fav-btn");
+    if (!btn) return;
+    // prevent navigation if inside <a>
+    e.preventDefault();
+    e.stopPropagation();
+    const meta = readMetaFromBtn(btn);
+    if (!meta) return;
+    toggleFav(meta);
+    updateAllFavButtons();
+    renderPersonal();
+  });
+
+  // Clear buttons (optional)
+  const recentClear = $("recentClear");
+  recentClear?.addEventListener("click", (e) => {
+    e.preventDefault();
+    saveJSON(KEY_RECENT, []);
+    renderPersonal();
+  });
+  const favClear = $("favClear");
+  favClear?.addEventListener("click", (e) => {
+    e.preventDefault();
+    saveJSON(KEY_FAVS, []);
+    renderPersonal();
+    updateAllFavButtons();
+  });
+
+  // On detail page, record recently viewed
+  if (window.__WORK_META__ && window.__WORK_META__.id) {
+    const m = window.__WORK_META__;
+    addRecent({
+      id: String(m.id),
+      title: m.title || "",
+      hero: m.hero || "",
+      path: m.path || ("works/" + m.id + "/"),
+      maker: m.maker || "",
+      release: m.release || "",
+      hasImg: !!m.hasImg,
+      hasMov: !!m.hasMov,
+    });
+  }
+
+  // Initial paint
+  function boot() {
+    updateAllFavButtons();
+    renderPersonal();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+
+  // Sync across tabs
+  window.addEventListener("storage", (ev) => {
+    if (!ev) return;
+    if ([KEY_FAVS, KEY_FAV_META, KEY_RECENT].includes(ev.key)) {
+      updateAllFavButtons();
+      renderPersonal();
+    }
+  });
 })();

@@ -13,6 +13,26 @@
     {% endif %}
   </div>
 
+  {% if show_personal_sections %}
+  <div class="personal-wrap" id="personalWrap" hidden>
+    <div class="personal-block" id="recentBlock" hidden>
+      <div class="personal-head">
+        <h2 class="personal-title">最近見た</h2>
+        <button class="btn btn-ghost btn-sm" id="recentClear" type="button">クリア</button>
+      </div>
+      <div id="recentGrid" class="works-grid"></div>
+    </div>
+
+    <div class="personal-block" id="favBlock" hidden>
+      <div class="personal-head">
+        <h2 class="personal-title">お気に入り</h2>
+        <button class="btn btn-ghost btn-sm" id="favClear" type="button">クリア</button>
+      </div>
+      <div id="favGrid" class="works-grid"></div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if pager and pager.page %}
   <div class="pager">
     {% if pager.prev is not none %}
@@ -35,15 +55,27 @@
     {% for w in works %}
       <a class="work-card" href="{{ root_path }}works/{{ w.id }}/" aria-label="{{ w.title }}">
         <div class="work-thumb">
+          <button class="fav-btn" type="button" aria-label="お気に入り" aria-pressed="false"
+            data-work-id="{{ w.id }}"
+            data-work-title="{{ (w.title or '')|e }}"
+            data-work-hero="{{ (w.hero_image or '')|e }}"
+            data-work-path="works/{{ w.id }}/"
+            data-work-maker="{{ (w.maker or '')|e }}"
+            data-work-release="{{ ((w.release_date or '')|replace(' 00:00:00',''))|e }}"
+            data-has-img="{{ 1 if w._has_img else 0 }}"
+            data-has-mov="{{ 1 if w._has_mov else 0 }}"
+          >☆</button>
           {% if w.hero_image %}
             <img loading="lazy" src="{{ w.hero_image }}" alt="{{ w.title }}">
           {% else %}
             <div class="thumb-placeholder"></div>
           {% endif %}
+          {% if sort_id == "rank" and (w.api_rank or w._tmp_rank) %}
+            <div class="work-rank">
+              <span class="badge badge-rank">{{ w.api_rank or w._tmp_rank }}位</span>
+            </div>
+          {% endif %}
           <div class="work-badges">
-            {% if sort_id == "rank" and (w.api_rank or w._tmp_rank) %}
-              <span class="badge badge-rank">#{{ w.api_rank or w._tmp_rank }}</span>
-            {% endif %}
             {% if w._has_img %}
               <span class="badge badge-img">🖼️ サンプル画像あり</span>
             {% endif %}
