@@ -103,6 +103,16 @@ def ensure_config(cfg_path: Path, root: Path) -> dict:
                         break
                 cfg["update"]["workflow_path"] = pick or rels[0]
 
+    # 既存configが build_only.yml を指していると、GitHub dispatch が意図せず build_only に向くことがあるため
+    # update.yml が存在する場合は update.yml を優先する（表示・操作の混乱防止）
+    try:
+        cur = str(cfg.get('update', {}).get('workflow_path') or '').replace('\\', '/').strip()
+        upd = '.github/workflows/update.yml'
+        if cur.endswith('build_only.yml') and (root / upd).exists():
+            cfg['update']['workflow_path'] = upd
+    except Exception:
+        pass
+
     save_json(cfg_path, cfg)
     return cfg
 
@@ -221,6 +231,9 @@ class GH:
 
     def dispatch(self, task: str) -> None:
         wf_id = Path(self.workflow_path).name
+        # 誤って build_only.yml を選んでいても、操作ボタンのdispatchは update.yml を使う
+        if wf_id.lower().startswith("build_only"):
+            wf_id = "update.yml"
         url = f"{self.api_base}/actions/workflows/{wf_id}/dispatches"
         payload = {"ref": self.branch, "inputs": {"task": task}}
         st, body = self._req("POST", url, payload)
@@ -665,8 +678,8 @@ class App:
         # GitHub実行
         if self.var_gh_enabled.get() and self.var_gh_run_on_github.get():
             if task == "fetch_build":
-                self.log_info("GitHub実行では「取得→生成」は full（取得→掃除→生成）で実行します")
-                self.dispatch_async("full")
+                self.log_info("GitHub実行: task=fetch_build（取得→生成）を実行します")
+                self.dispatch_async("fetch_build")
                 return
             self.dispatch_async(task)
             return
