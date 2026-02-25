@@ -1,0 +1,8 @@
+{
+  "title": "架空作品『サンプル作品A』レビュー",
+  "description": "これはテスト用の一般向けサンプルページです。Pythonで静的HTMLを生成しています。",
+  "release_date": "2026-01-14",
+  "tags": ["初心者", "静的サイト", "Python"],
+  "official_url": "https://example.com",
+  "hero_image": "https://placehold.co/960x540?text=Sample+Image"
+}

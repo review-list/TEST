@@ -1,0 +1,86 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="container">
+  <div class="page-head">
+    <h1 class="page-title">{{ heading }}</h1>
+
+    {% if sort_tabs %}
+      <div class="sort-tabs" role="navigation" aria-label="並び替え">
+        {% for t in sort_tabs %}
+          <a class="sort-tab{% if sort_id == t.id %} is-active{% endif %}" href="{{ root_path }}{{ t.href }}">{{ t.label }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if pager and pager.page %}
+  <div class="pager">
+    {% if pager.prev is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">← 前</span>
+    {% endif %}
+
+    <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
+
+    {% if pager.next is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">次 →</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="works-grid">
+    {% for w in works %}
+      <a class="work-card" href="{{ root_path }}works/{{ w.id }}/" aria-label="{{ w.title }}">
+        <div class="work-thumb">
+          {% if w.hero_image %}
+            <img loading="lazy" src="{{ w.hero_image }}" alt="{{ w.title }}">
+          {% else %}
+            <div class="thumb-placeholder"></div>
+          {% endif %}
+          {% if sort_id == "rank" and (w.api_rank or w._tmp_rank) %}
+            <span class="badge badge-rank badge-rank--pin">{{ (w.api_rank or w._tmp_rank) }}位</span>
+          {% endif %}
+          <div class="work-badges">
+{% if w._has_img %}
+              <span class="badge badge-img">🖼️ サンプル画像あり</span>
+            {% endif %}
+            {% if w._has_mov %}
+              <span class="badge badge-mov">🎬 サンプル動画あり</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="work-meta">
+          <div class="work-title">{{ w.title }}</div>
+          <div class="work-sub">
+            {% if w.release_date %}<span class="muted">{{ w.release_date }}</span>{% endif %}
+            {% if w.maker %}<span class="dot">•</span><span class="muted">{{ w.maker }}</span>{% endif %}
+            {% if w.series %}<span class="dot">•</span><span class="muted">{{ w.series }}</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+
+  {% if pager and pager.page %}
+  <div class="pager pager--bottom">
+    {% if pager.prev is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">← 前</span>
+    {% endif %}
+
+    <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
+
+    {% if pager.next is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">次 →</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="container">
+  <div class="page-head">
+    <h1 class="page-title">検索</h1>
+    <p class="muted">キーワード / タグ / メーカー / シリーズ / サンプル有無で絞り込めます。</p>
+  </div>
+
+  <div class="search-panel">
+    <div class="search-row">
+      <label class="search-label">
+        キーワード
+        <input id="q" class="input" type="search" placeholder="タイトル・女優・ジャンルなど">
+      </label>
+
+      <label class="search-label">
+        メーカー
+        <select id="maker" class="select">
+          <option value="">すべて</option>
+        </select>
+      </label>
+
+      <label class="search-label">
+        シリーズ
+        <select id="series" class="select">
+          <option value="">すべて</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="search-row search-row--checks">
+      <label class="check"><input type="checkbox" id="hasImg"> <span>🖼️ サンプル画像あり</span></label>
+      <label class="check"><input type="checkbox" id="hasMov"> <span>🎬 サンプル動画あり</span></label>
+      <button id="clear" class="btn btn-ghost" type="button">条件をクリア</button>
+    </div>
+
+    <div class="tag-area">
+      <div class="tag-head">
+        <div class="tag-title">人気タグ</div>
+        <div class="muted tag-hint">※クリックでON/OFF（もう一度クリックで解除）</div>
+      </div>
+      <div id="popularTags" class="tags"></div>
+
+      <div class="tag-head tag-head--selected">
+        <div class="tag-title">選択中</div>
+      </div>
+      <div id="selectedTags" class="tags"></div>
+    </div>
+  </div>
+
+  <div class="search-status">
+    <span id="status" class="muted"></span>
+  </div>
+
+  <div id="results" class="works-grid"></div>
+  <div id="sentinel" class="sentinel"></div>
+</section>
+
+<script>
+  // 検索用manifest（gzip+xor+base64）をHTMLに埋め込み
+  window.__SEARCH_EMBED__ = "{{ search_manifest_b64 }}";
+  window.__ROOT_PATH__ = "{{ root_path }}";
+</script>
+<script src="{{ js_path }}"></script>
+{% endblock %}
