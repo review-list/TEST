@@ -6,7 +6,7 @@ Catalog Manager GUI (Tkinter) - v3
 - 「操作」ボタン群を画面下に固定して、ウィンドウを広げなくても必ず見えるように
 - ログを見やすく：開始/完了/失敗が一目で分かる形式（✅/❌/⏳）＋実行時間＋状態表示
 - DMM API / AFFILIATE ID を2段入力（.catalog_secrets.json に保存、commitしない）
-- 取得→生成 ボタン追加（ローカル: fetch→build / GitHub実行時: fullへフォールバック）
+- 取得→生成 ボタン追加（ローカル: fetch→build / GitHub実行でも fetch+build を実行）
 - GitHub本番の「更新モード/最大件数/自動更新/自動更新時間」を表示
   - 自動更新/時間は Variables: CATALOG_AUTO_UPDATE_ENABLED / CATALOG_AUTO_UPDATE_TIME_JST を優先
   - 無い場合のみ workflow の cron を参照（表示だけ。書換えはしない＝403回避）
@@ -102,16 +102,6 @@ def ensure_config(cfg_path: Path, root: Path) -> dict:
                     if pick:
                         break
                 cfg["update"]["workflow_path"] = pick or rels[0]
-
-    # 既存configが build_only.yml を指していると、GitHub dispatch が意図せず build_only に向くことがあるため
-    # update.yml が存在する場合は update.yml を優先する（表示・操作の混乱防止）
-    try:
-        cur = str(cfg.get('update', {}).get('workflow_path') or '').replace('\\', '/').strip()
-        upd = '.github/workflows/update.yml'
-        if cur.endswith('build_only.yml') and (root / upd).exists():
-            cfg['update']['workflow_path'] = upd
-    except Exception:
-        pass
 
     save_json(cfg_path, cfg)
     return cfg
@@ -231,9 +221,6 @@ class GH:
 
     def dispatch(self, task: str) -> None:
         wf_id = Path(self.workflow_path).name
-        # 誤って build_only.yml を選んでいても、操作ボタンのdispatchは update.yml を使う
-        if wf_id.lower().startswith("build_only"):
-            wf_id = "update.yml"
         url = f"{self.api_base}/actions/workflows/{wf_id}/dispatches"
         payload = {"ref": self.branch, "inputs": {"task": task}}
         st, body = self._req("POST", url, payload)
@@ -677,25 +664,35 @@ class App:
     def run_task(self, task: str):
         # GitHub実行
         if self.var_gh_enabled.get() and self.var_gh_run_on_github.get():
-            if task == "fetch_build":
-                self.log_info("GitHub実行: task=fetch_build（取得→生成）を実行します")
-                self.dispatch_async("fetch_build")
-                return
-            self.dispatch_async(task)
+            wf_map = {
+                "fetch": ".github/workflows/wf_fetch.yml",
+                "build": ".github/workflows/wf_build.yml",
+                "sanitize": ".github/workflows/wf_sanitize.yml",
+                "fetch_build": ".github/workflows/wf_fetch_build.yml",
+                "full": ".github/workflows/wf_full.yml",
+            }
+            wf = wf_map.get(task)
+            if wf:
+                self.dispatch_async(task, workflow_path=wf)
+            else:
+                self.dispatch_async(task)
             return
         # ローカル実行
         self.run_local(task)
 
-    def dispatch_async(self, task: str):
+    def dispatch_async(self, task: str, workflow_path: str | None = None):
         def job():
             self.master.after(0, lambda: self.set_state("GitHub実行中..."))
             t0 = time.time()
             try:
                 gh = self._get_gh()
-                self.master.after(0, lambda: self.log_info(f"GitHub実行 発火: task={task}"))
+                if workflow_path:
+                    gh.workflow_path = workflow_path
+                wf_id = Path(gh.workflow_path).name
+                self.master.after(0, lambda: self.log_info(f"GitHub実行 発火: {wf_id} (task={task})"))
                 gh.dispatch(task)
                 dt = time.time() - t0
-                self.master.after(0, lambda: self.log_ok(f"GitHub実行 発火OK (task={task}, {dt:.1f}s)"))
+                self.master.after(0, lambda: self.log_ok(f"GitHub実行 発火OK: {wf_id} (task={task}, {dt:.1f}s)"))
                 self.master.after(0, lambda: self.set_state("待機中"))
             except Exception as e:
                 self.master.after(0, lambda: self.log_err(f"GitHub実行エラー: {e}"))
