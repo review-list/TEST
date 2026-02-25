@@ -1,132 +1,119 @@
 # -*- coding: utf-8 -*-
-"""Catalog Manager GUI (Tkinter)
+"""
+Catalog Manager GUI (Tkinter) - v3
 
-ダブルクリックで起動できる、簡易の管理UIです。
+改善点（ユーザー要望）
+- 「操作」ボタン群を画面下に固定して、ウィンドウを広げなくても必ず見えるように
+- ログを見やすく：開始/完了/失敗が一目で分かる形式（✅/❌/⏳）＋実行時間＋状態表示
+- DMM API / AFFILIATE ID を2段入力（.catalog_secrets.json に保存、commitしない）
+- 取得→生成 ボタン追加（ローカル: fetch→build / GitHub実行時: fullへフォールバック）
+- GitHub本番の「更新モード/最大件数/自動更新/自動更新時間」を表示
+  - 自動更新/時間は Variables: CATALOG_AUTO_UPDATE_ENABLED / CATALOG_AUTO_UPDATE_TIME_JST を優先
+  - 無い場合のみ workflow の cron を参照（表示だけ。書換えはしない＝403回避）
 
-できること
-- 現在の作品数 / 画像あり / 動画あり / works.json更新日時 の表示
-- 更新モード（維持更新OFF / 追加更新ON）と、最大件数（テスト）設定
-- GitHub Actions の自動更新時刻（workflow cron）の表示・変更
-- fetch / build / fetch→sanitize→build / sanitize(--learn) / 件数削除（今のデータ）
-
-補足
-- 環境変数が無い場合は「APIキー（ローカル）」に保存して使えます
-  ※ .catalog_secrets.json は commit しないでください
+注意
+- このGUIは cron を workflow ファイルへPUT更新しません（Contents Write不要）。
 """
 
 from __future__ import annotations
 
+import base64
 import json
-import locale
 import os
 import re
+import stat
 import subprocess
 import sys
 import threading
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, List
-
-import urllib.request
+import time
 import urllib.error
-import webbrowser
-
+import urllib.request
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from tkinter import Tk, StringVar, BooleanVar, IntVar, messagebox
+from tkinter import ttk
 import tkinter as tk
-from tkinter import ttk, messagebox
+
+APP_TITLE = "Catalog Manager"
+CONFIG_FILE = "catalog_config.json"
+SECRETS_FILE = ".catalog_secrets.json"
 
 JST = timezone(timedelta(hours=9))
-SECRETS_FILE = ".catalog_secrets.json"  # ローカル専用（commitしない）
 
 
-# -------------------- file helpers --------------------
-def repo_root(start: Optional[Path] = None) -> Path:
-    """Locate repo root (folder containing src/)."""
-    here = (start or Path.cwd()).resolve()
-    for p in [here] + list(here.parents):
-        if (p / "src").is_dir():
-            return p
-        if p.name == "src" and (p.parent / "src").is_dir():
-            return p.parent
-    # fallback to script location
-    p = Path(__file__).resolve().parent
-    if (p / "src").is_dir():
-        return p
-    raise RuntimeError("Could not find repo root (folder containing 'src').")
+# ---------------- util ----------------
 
-
-# src/ を import 可能にして、works_store を利用（chunk分割データ対応）
-try:
-    _ROOT_FOR_IMPORT = repo_root(Path(__file__).resolve().parent)
-    _SRC_FOR_IMPORT = _ROOT_FOR_IMPORT / "src"
-    if _SRC_FOR_IMPORT.is_dir() and str(_SRC_FOR_IMPORT) not in sys.path:
-        sys.path.insert(0, str(_SRC_FOR_IMPORT))
-    from works_store import load_bundle, save_bundle, paths as works_paths
-except Exception:
-    load_bundle = None  # type: ignore
-    save_bundle = None  # type: ignore
-    works_paths = None  # type: ignore
-
-
-def load_json(path: Path) -> Dict[str, Any]:
+def load_json(path: Path) -> dict:
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
 
-
-def save_json(path: Path, data: Dict[str, Any]) -> None:
+def save_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+def safe_bool(v) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "true", "yes", "on", "y")
+    return False
 
-def ensure_default_config(cfg_path: Path, root: Path) -> Dict[str, Any]:
-    """catalog_config.json が無ければ作成。workflow_path は自動検出して入れる。"""
-    if cfg_path.exists():
-        cfg = load_json(cfg_path)
-    else:
-        cfg = {
-            "site_name": "Review Catalog",
-            "update": {
-                "enabled": True,
-                "jst_time": "03:00",
-                "workflow_path": ".github/workflows/auto_update.yml",
-            },
-            "fetch": {
-                "add_new_works": False,
-                "trim_enable": False,
-                "trim_to": 300,
-            },
-        }
+def now_jst_str() -> str:
+    return datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
 
-    # workflow 自動検出
+def ensure_config(cfg_path: Path, root: Path) -> dict:
+    cfg = load_json(cfg_path) if cfg_path.exists() else {}
+
+    cfg.setdefault("update", {})
+    cfg["update"].setdefault("enabled", True)      # 表示用
+    cfg["update"].setdefault("jst_time", "03:00")  # 表示用
+    cfg["update"].setdefault("workflow_path", ".github/workflows/update.yml")
+
+    cfg.setdefault("fetch", {})
+    cfg["fetch"].setdefault("add_new_works", False)
+    cfg["fetch"].setdefault("trim_enable", False)
+    cfg["fetch"].setdefault("trim_to", 300)
+
+    cfg.setdefault("github", {})
+    cfg["github"].setdefault("enabled", False)
+    cfg["github"].setdefault("repo", "")          # OWNER/REPO
+    cfg["github"].setdefault("branch", "main")
+    cfg["github"].setdefault("run_buttons_on_github", True)
+    cfg["github"].setdefault("push_on_save", True)
+    cfg["github"].setdefault("sync_vars_on_save", True)  # 互換
+
+    # workflow 自動検出（ローカル）
     wf_dir = root / ".github" / "workflows"
-    candidates = sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml")))
-    if candidates:
-        rels = [str(p.relative_to(root)).replace("\\", "/") for p in candidates]
-        wf_rel = str(((cfg.get("update") or {}).get("workflow_path") or "")).strip() or rels[0]
-        if wf_rel not in rels:
-            pick = None
-            for key in ["auto_update", "update", "auto", "pages"]:
-                for r in rels:
-                    if key in r:
-                        pick = r
+    if wf_dir.exists():
+        candidates = sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml")))
+        if candidates:
+            rels = [str(p.relative_to(root)).replace("\\", "/") for p in candidates]
+            cur = str(cfg["update"].get("workflow_path") or "").strip()
+            if not cur or cur not in rels:
+                pick = None
+                for key in ["update", "auto_update", "auto", "pages", "build_only"]:
+                    for r in rels:
+                        if key in r:
+                            pick = r
+                            break
+                    if pick:
                         break
-                if pick:
-                    break
-            cfg.setdefault("update", {})["workflow_path"] = pick or rels[0]
-        else:
-            cfg.setdefault("update", {})["workflow_path"] = wf_rel
+                cfg["update"]["workflow_path"] = pick or rels[0]
 
     save_json(cfg_path, cfg)
     return cfg
 
-
-def load_secrets(root: Path) -> Dict[str, str]:
+def load_secrets(root: Path) -> dict:
     p = root / SECRETS_FILE
     if not p.exists():
         return {}
     try:
         j = json.loads(p.read_text(encoding="utf-8"))
-        out: Dict[str, str] = {}
-        for k in ["DMM_API_ID", "DMM_AFFILIATE_ID"]:
+        out = {}
+        for k in ["DMM_API_ID", "DMM_AFFILIATE_ID", "GITHUB_PAT"]:
             v = j.get(k)
             if isinstance(v, str) and v.strip():
                 out[k] = v.strip().strip('"')
@@ -134,1024 +121,669 @@ def load_secrets(root: Path) -> Dict[str, str]:
     except Exception:
         return {}
 
-
-def save_secrets(root: Path, api_id: str, affiliate_id: str) -> None:
+def save_secret_fields(root: Path, **kwargs: str) -> None:
     p = root / SECRETS_FILE
-    data = {
-        "DMM_API_ID": api_id.strip().strip('"'),
-        "DMM_AFFILIATE_ID": affiliate_id.strip().strip('"'),
-        "_note": "local only. DO NOT COMMIT THIS FILE.",
-        "_saved_at": datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S %z"),
-    }
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    data = load_json(p) if p.exists() else {}
+    for k, v in kwargs.items():
+        if v is not None:
+            data[k] = v
+    data.setdefault("_note", "local only. DO NOT COMMIT THIS FILE.")
+    data["_saved_at"] = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S %z")
+    save_json(p, data)
 
-
-# -------------------- read/update project state --------------------
-def read_works_stats(data_dir: Path, legacy_works_path: Path) -> Tuple[int, int, int, str]:
-    """Return (count, with_imgs, with_mov, modified_time_str).
-
-    優先: works_manifest.json（chunk分割）
-    互換: works.json
-    """
-    # chunk形式
-    if works_paths is not None:
-        manifest_path, _, _legacy = works_paths(data_dir)
-        if manifest_path.exists():
-            try:
-                mf = json.loads(manifest_path.read_text(encoding="utf-8"))
-                if isinstance(mf, dict):
-                    count = int(mf.get("count") or 0)
-                    with_imgs = int(mf.get("with_sample_images") or 0)
-                    with_mov = int(mf.get("with_sample_movies") or 0)
-                    mtime = manifest_path.stat().st_mtime
-                    mtime_s = datetime.fromtimestamp(mtime, tz=JST).strftime("%Y-%m-%d %H:%M:%S")
-                    return count, with_imgs, with_mov, mtime_s
-            except Exception:
-                pass
-
-    # legacy works.json
-    works_path = legacy_works_path
-    if not works_path.exists():
-        return 0, 0, 0, "(no works data)"
-
-    j = json.loads(works_path.read_text(encoding="utf-8"))
-    works = j.get("works") or []
-    if not isinstance(works, list):
-        return 0, 0, 0, "(invalid works.json)"
-
-    def has_imgs(w: Dict[str, Any]) -> bool:
-        for k in ["sample_images_large", "sample_images_small", "sample_images"]:
-            v = w.get(k)
-            if isinstance(v, list) and any(isinstance(x, str) and x.strip() for x in v):
-                return True
-        return False
-
-    def has_mov(w: Dict[str, Any]) -> bool:
-        return bool(w.get("sample_movie"))
-
-    with_imgs = sum(1 for w in works if isinstance(w, dict) and has_imgs(w))
-    with_mov = sum(1 for w in works if isinstance(w, dict) and has_mov(w))
-
-    mtime = works_path.stat().st_mtime
-    mtime_s = datetime.fromtimestamp(mtime, tz=JST).strftime("%Y-%m-%d %H:%M:%S")
-    return len(works), with_imgs, with_mov, mtime_s
-
-
-def read_fetch_toggles(fetch_path: Path) -> Tuple[Optional[bool], Optional[bool], Optional[int]]:
-    if not fetch_path.exists():
-        return None, None, None
-    text = fetch_path.read_text(encoding="utf-8")
-
-    def mbool(name: str) -> Optional[bool]:
-        m = re.search(rf"^\s*{re.escape(name)}\s*=\s*(True|False)\b", text, re.M)
-        if not m:
-            return None
-        return m.group(1) == "True"
-
-    def mint(name: str) -> Optional[int]:
-        m = re.search(rf"^\s*{re.escape(name)}\s*=\s*(\d+)\b", text, re.M)
-        if not m:
-            return None
-        return int(m.group(1))
-
-    return mbool("ADD_NEW_WORKS"), mbool("TRIM_ENABLE"), mint("TRIM_TO")
-
-
-def apply_fetch_toggles(fetch_path: Path, add_new: bool, trim_enable: bool, trim_to: int) -> None:
-    if not fetch_path.exists():
-        raise FileNotFoundError(f"fetch script not found: {fetch_path}")
-
-    text = fetch_path.read_text(encoding="utf-8")
-
-    def sub_bool(name: str, val: bool) -> None:
-        nonlocal text
-        new = "True" if val else "False"
-        pat = rf"^(\s*{re.escape(name)}\s*=\s*)(True|False)(\b.*)$"
-        if re.search(pat, text, re.M):
-            text = re.sub(pat, rf"\g<1>{new}\g<3>", text, flags=re.M)
-        else:
-            text = f"\n{name} = {new}\n" + text
-
-    def sub_int(name: str, val: int) -> None:
-        nonlocal text
-        pat = rf"^(\s*{re.escape(name)}\s*=\s*)(\d+)(\b.*)$"
-        if re.search(pat, text, re.M):
-            text = re.sub(pat, rf"\g<1>{int(val)}\g<3>", text, flags=re.M)
-        else:
-            text = f"\n{name} = {int(val)}\n" + text
-
-    sub_bool("ADD_NEW_WORKS", add_new)
-    sub_bool("TRIM_ENABLE", trim_enable)
-    sub_int("TRIM_TO", int(trim_to))
-    fetch_path.write_text(text, encoding="utf-8")
-
-
-def parse_cron_from_workflow(yml_text: str) -> Optional[str]:
-    m = re.search(r"\bcron\s*:\s*['\"]([^'\"]+)['\"]", yml_text)
+def parse_cron_from_workflow(yml_text: str) -> str | None:
+    m = re.search(r"(?m)^\s*-\s*cron:\s*['\"]([^'\"]+)['\"]\s*$", yml_text)
     return m.group(1).strip() if m else None
 
-
-def cron_to_jst_time(cron: str) -> Optional[str]:
-    parts = cron.split()
-    if len(parts) < 2:
+def cron_to_jst_time(cron: str) -> str | None:
+    parts = cron.strip().split()
+    if len(parts) != 5:
         return None
-    try:
-        minute = int(parts[0])
-        hour_utc = int(parts[1])
-    except ValueError:
+    minute, hour, dom, mon, dow = parts
+    if dom != "*" or mon != "*" or dow != "*":
         return None
-    hour_jst = (hour_utc + 9) % 24
-    return f"{hour_jst:02d}:{minute:02d}"
+    if not minute.isdigit() or not hour.isdigit():
+        return None
+    dt = datetime(2000, 1, 1, int(hour), int(minute), tzinfo=timezone.utc).astimezone(JST)
+    return dt.strftime("%H:%M")
 
 
-def jst_time_to_cron(jst_time: str) -> str:
-    m = re.match(r"^(\d{1,2}):(\d{2})$", jst_time.strip())
-    if not m:
-        raise ValueError("time must be HH:MM")
-    hh = int(m.group(1))
-    mm = int(m.group(2))
-    if not (0 <= hh <= 23 and 0 <= mm <= 59):
-        raise ValueError("time must be valid HH:MM")
-    hour_utc = (hh - 9) % 24
-    return f"{mm} {hour_utc} * * *"
+# ---------------- GitHub API ----------------
+
+@dataclass
+class GH:
+    owner: str
+    repo: str
+    branch: str
+    token: str
+    workflow_path: str
+
+    @property
+    def api_base(self) -> str:
+        return f"https://api.github.com/repos/{self.owner}/{self.repo}"
+
+    def _req(self, method: str, url: str, payload: dict | None = None):
+        data = None
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("X-GitHub-Api-Version", "2022-11-28")
+        if self.token:
+            req.add_header("Authorization", f"Bearer {self.token}")
+        if payload is not None:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as res:
+                return res.status, res.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+        except Exception as e:
+            return 0, str(e).encode("utf-8")
+
+    def list_variables(self) -> dict:
+        url = f"{self.api_base}/actions/variables?per_page=100"
+        st, body = self._req("GET", url)
+        if st != 200:
+            raise RuntimeError(f"GitHub variables GET failed (status={st}) {body!r}")
+        j = json.loads(body.decode("utf-8"))
+        out = {}
+        for it in j.get("variables", []) or []:
+            name = (it.get("name") or "").strip()
+            val = it.get("value")
+            if name:
+                out[name] = "" if val is None else str(val)
+        return out
+
+    def upsert_variable(self, name: str, value: str) -> None:
+        url_u = f"{self.api_base}/actions/variables/{name}"
+        st, body = self._req("PATCH", url_u, {"value": value})
+        if st == 204:
+            return
+        if st == 404:
+            url_c = f"{self.api_base}/actions/variables"
+            st2, body2 = self._req("POST", url_c, {"name": name, "value": value})
+            if st2 in (201, 204):
+                return
+            raise RuntimeError(f"GitHub variables POST failed: {name} (status={st2}) {body2!r}")
+        raise RuntimeError(f"GitHub variables PATCH failed: {name} (status={st}) {body!r}")
+
+    def get_workflow_text(self) -> str:
+        wf = self.workflow_path.strip().lstrip("/")
+        url = f"{self.api_base}/contents/{wf}?ref={self.branch}"
+        st, body = self._req("GET", url)
+        if st != 200:
+            raise RuntimeError(f"GitHub contents GET failed: {wf} (status={st}) {body!r}")
+        j = json.loads(body.decode("utf-8"))
+        b64 = j.get("content") or ""
+        raw = base64.b64decode(b64)
+        return raw.decode("utf-8", errors="replace")
+
+    def dispatch(self, task: str) -> None:
+        wf_id = Path(self.workflow_path).name
+        url = f"{self.api_base}/actions/workflows/{wf_id}/dispatches"
+        payload = {"ref": self.branch, "inputs": {"task": task}}
+        st, body = self._req("POST", url, payload)
+        if st in (201, 204):
+            return
+        payload2 = {"ref": self.branch}
+        st2, body2 = self._req("POST", url, payload2)
+        if st2 in (201, 204):
+            return
+        raise RuntimeError(f"GitHub dispatch failed (status={st}) {body!r} / retry(status={st2}) {body2!r}")
 
 
-def apply_cron_to_workflow(workflow_path: Path, cron: str) -> bool:
-    if not workflow_path.exists():
-        return False
-    text = workflow_path.read_text(encoding="utf-8")
-    if re.search(r"\bcron\s*:\s*['\"][^'\"]+['\"]", text):
-        text2 = re.sub(r"(\bcron\s*:\s*)['\"][^'\"]+['\"]", rf"\g<1>'{cron}'", text)
-        workflow_path.write_text(text2, encoding="utf-8")
-        return True
-    return False
+# ---------------- GUI ----------------
 
-
-def trim_works_data(data_dir: Path, legacy_works_path: Path, n: int) -> int:
-    """今あるデータを n 件に切り詰めて保存。
-
-    - chunk形式があれば chunk形式で保存
-    - 無ければ legacy works.json を切り詰め
-    """
-    n = max(0, int(n))
-
-    # chunk形式
-    if load_bundle is not None and save_bundle is not None:
-        meta, works = load_bundle(data_dir)
-        if works:
-            kept = works[:n]
-            chunk_size = int(meta.get("chunk_size") or 500) if isinstance(meta, dict) else 500
-            save_bundle(
-                data_dir,
-                meta if isinstance(meta, dict) else {},
-                kept,
-                chunk_size=chunk_size,
-                cleanup_legacy=True,
-            )
-            return len(kept)
-
-    # legacy works.json
-    works_path = legacy_works_path
-    if not works_path.exists():
-        return 0
-    j = json.loads(works_path.read_text(encoding="utf-8"))
-    works = j.get("works") or []
-    if not isinstance(works, list):
-        return 0
-
-    def key(w: Dict[str, Any]) -> str:
-        for k in ["release_date", "date"]:
-            v = w.get(k)
-            if isinstance(v, str):
-                return v
-        return ""
-
-    works_sorted = sorted([w for w in works if isinstance(w, dict)], key=key, reverse=True)
-    kept = works_sorted[:n]
-    j["works"] = kept
-    j["_trimmed_at"] = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S %z")
-    save_json(works_path, j)
-    return len(kept)
-
-
-# -------------------- GUI --------------------
-class App(ttk.Frame):
-    def __init__(self, master: tk.Tk):
-        super().__init__(master)
+class App:
+    def __init__(self, master: Tk):
         self.master = master
-        self.root = repo_root(Path(__file__).resolve().parent)
-
-        self.cfg_path = self.root / "catalog_config.json"
-        self.data_dir = self.root / "src" / "data"
-        self.works_manifest_path = self.data_dir / "works_manifest.json"
-        self.works_chunks_dir = self.data_dir / "works_chunks"
-        self.legacy_works_path = self.data_dir / "works.json"
-        self.fetch_path = self.root / "src" / "fetch_to_works_fanza.py"
-        self.sanitize_path = self.root / "src" / "sanitize_noimage_samples.py"
-        self.build_path = self.root / "src" / "build.py"
-
-        self.cfg = ensure_default_config(self.cfg_path, self.root)
+        self.root = Path(__file__).resolve().parent
+        self.cfg_path = self.root / CONFIG_FILE
+        self.cfg = ensure_config(self.cfg_path, self.root)
         self.secrets = load_secrets(self.root)
 
-        # ----- vars -----
-        # mode: OFF=update(維持) / ON=full(追加)
-        self.var_mode = tk.StringVar(value="update")  # update/full
-        self.var_trim_enable = tk.BooleanVar(value=False)
-        self.var_trim_to = tk.StringVar(value="300")
-        self.var_time = tk.StringVar(value="03:00")
-        self.var_apply_workflow = tk.BooleanVar(value=True)
-        self.var_workflow_path = tk.StringVar(value=self.cfg.get("update", {}).get("workflow_path", ""))
+        self.master.title(APP_TITLE)
+        # 横を少し広め：左(設定) + 右(ログ)
+        self.master.geometry("980x580")
+        self.master.minsize(860, 520)
 
-        self.var_api_id = tk.StringVar(value=self.secrets.get("DMM_API_ID", ""))
-        self.var_aff_id = tk.StringVar(value=self.secrets.get("DMM_AFFILIATE_ID", ""))
-        self.var_show_keys = tk.BooleanVar(value=False)
+        # status line (top)
+        self.var_run_state = StringVar(value="待機中")
+        topbar = ttk.Frame(master)
+        topbar.pack(fill="x", padx=10, pady=(8, 2))
+        ttk.Label(topbar, text="状態:").pack(side="left")
+        ttk.Label(topbar, textvariable=self.var_run_state).pack(side="left", padx=(6, 0))
+        ttk.Button(topbar, text="GitHub設定 取得 (get)", command=self.refresh_github_status_async).pack(side="right")
 
-        # footer
-        self.var_auto_apply = tk.BooleanVar(value=True)
-        self.status_auto = tk.StringVar(value="")
+        # main panes
+        paned = ttk.PanedWindow(master, orient="horizontal")
+        paned.pack(fill="both", expand=True, padx=10, pady=8)
 
-        # status vars
-        self.status_works = tk.StringVar(value="-")
-        self.status_imgs = tk.StringVar(value="-")
-        self.status_mov = tk.StringVar(value="-")
-        self.status_mtime = tk.StringVar(value="-")
-        self.status_keys = tk.StringVar(value="-")
-        self.status_mode = tk.StringVar(value="-")
-        self.status_actions_time = tk.StringVar(value="-")
-        self.status_actions_detail = tk.StringVar(value="-")
+        # LEFT container: (scrollable settings/status) + (fixed actions)
+        left = ttk.Frame(paned)
+        paned.add(left, weight=3)
 
-        # remote (GitHub) display
-        self.var_remote_manifest_url = tk.StringVar(value=str((self.cfg.get("remote") or {}).get("manifest_url", "")))
-        self.status_remote_works = tk.StringVar(value="-")
-        self.status_remote_imgs = tk.StringVar(value="-")
-        self.status_remote_mov = tk.StringVar(value="-")
-        self.status_remote_updated = tk.StringVar(value="-")
-        self.status_remote_note = tk.StringVar(value="")
+        # Scroll area for status/settings
+        scroll_area = ttk.Frame(left)
+        scroll_area.pack(fill="both", expand=True)
 
-        # internal
-        self._auto_job: Optional[str] = None
-        self._is_running = False
+        self.canvas = tk.Canvas(scroll_area, highlightthickness=0)
+        vsb = ttk.Scrollbar(scroll_area, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
 
-        self._build_ui()
-        self._bind_auto_apply()
-        self.reload_all(show_toast=False)
-        if self.var_remote_manifest_url.get().strip():
-            self.load_remote_stats()
+        self.inner = ttk.Frame(self.canvas)
+        self._inner_id = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>", self._on_inner_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
 
-    # ---------- UI ----------
-    def _build_ui(self) -> None:
-        self.master.title("Catalog Manager")
-        self.master.minsize(720, 460)
-        try:
-            self.master.geometry("760x520")
-        except Exception:
-            pass
+        # Fixed actions area (always visible)
+        self.fixed_actions = ttk.LabelFrame(left, text="操作（常に表示）")
+        self.fixed_actions.pack(fill="x", pady=(8, 0))
 
-        self.pack(fill="both", expand=True)
+        # RIGHT: log
+        right = ttk.Frame(paned)
+        paned.add(right, weight=2)
+        lf_log = ttk.LabelFrame(right, text="ログ（開始/完了が分かる）")
+        lf_log.pack(fill="both", expand=True)
+        self.txt_log = tk.Text(lf_log, wrap="word")
+        self.txt_log.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
+        sb_log = ttk.Scrollbar(lf_log, orient="vertical", command=self.txt_log.yview)
+        sb_log.pack(side="right", fill="y", padx=(6, 8), pady=8)
+        self.txt_log.configure(yscrollcommand=sb_log.set)
+        self.txt_log.configure(state="disabled")
 
-        pad_outer = {"padx": 10, "pady": 8}
+        # Log tags
+        self.txt_log.tag_configure("INFO", spacing1=2, spacing3=2)
+        self.txt_log.tag_configure("OK", spacing1=2, spacing3=2)
+        self.txt_log.tag_configure("ERR", spacing1=2, spacing3=2)
+        self.txt_log.tag_configure("RAW", spacing1=0, spacing3=0)
 
-        # Header
-        hdr = ttk.Frame(self)
-        hdr.pack(fill="x", **pad_outer)
-        ttk.Label(hdr, text="Catalog Manager", font=("Segoe UI", 13, "bold")).pack(side="left")
-        ttk.Label(hdr, text=str(self.root), foreground="#666").pack(side="right")
+        # vars (local)
+        self.var_add_new = BooleanVar(value=safe_bool(self.cfg["fetch"].get("add_new_works")))
+        self.var_trim_en = BooleanVar(value=safe_bool(self.cfg["fetch"].get("trim_enable")))
+        self.var_trim_to = IntVar(value=int(self.cfg["fetch"].get("trim_to") or 300))
+        self.var_auto_en = BooleanVar(value=safe_bool(self.cfg["update"].get("enabled")))
+        self.var_auto_time = StringVar(value=str(self.cfg["update"].get("jst_time") or "03:00"))
+        self.var_workflow_path = StringVar(value=str(self.cfg["update"].get("workflow_path") or ".github/workflows/update.yml"))
 
-        # Body
-        body = ttk.Frame(self)
-        body.pack(fill="both", expand=True, **pad_outer)
+        # vars (github)
+        gh_cfg = self.cfg.get("github") or {}
+        self.var_gh_enabled = BooleanVar(value=safe_bool(gh_cfg.get("enabled")))
+        self.var_gh_repo = StringVar(value=str(gh_cfg.get("repo") or ""))
+        self.var_gh_branch = StringVar(value=str(gh_cfg.get("branch") or "main"))
+        self.var_gh_run_on_github = BooleanVar(value=safe_bool(gh_cfg.get("run_buttons_on_github", True)))
+        self.var_push_github_on_save = BooleanVar(value=safe_bool(gh_cfg.get("push_on_save", True)))
 
-        left = ttk.Frame(body)
-        left.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        right = ttk.Frame(body)
-        right.pack(side="right", fill="both", expand=True, padx=(8, 0))
+        # status (local)
+        self.local_status_mode = StringVar(value="-")
+        self.local_status_trim = StringVar(value="-")
+        self.local_status_auto = StringVar(value="-")
+        self.local_status_time = StringVar(value="-")
 
-        # ---- Status ----
-        st = ttk.LabelFrame(left, text="現在の状況")
-        st.pack(fill="x", pady=(0, 10))
+        # status (github)
+        self.gh_status_mode = StringVar(value="-")
+        self.gh_status_trim = StringVar(value="-")
+        self.gh_status_auto = StringVar(value="-")
+        self.gh_status_time = StringVar(value="-")
+        self.gh_status_updated = StringVar(value="-")
 
-        st_grid = ttk.Frame(st)
-        st_grid.pack(fill="x", padx=10, pady=10)
-        st_grid.columnconfigure(1, weight=1)
+        self._build_scroll_ui()
+        self._build_fixed_actions()
+        self.refresh_local_status()
 
-        def add_row(r: int, label: str, var: tk.StringVar, value_font=None):
-            ttk.Label(st_grid, text=label).grid(row=r, column=0, sticky="w", pady=2)
-            ttk.Label(st_grid, textvariable=var, font=value_font, justify="left").grid(
-                row=r, column=1, sticky="w", pady=2
-            )
+        self.master.after(200, self.refresh_github_status_async)
 
-        add_row(0, "作品数", self.status_works, value_font=("Segoe UI", 11, "bold"))
-        add_row(1, "画像あり", self.status_imgs)
-        add_row(2, "動画あり", self.status_mov)
-        add_row(3, "データ更新", self.status_mtime)
-        add_row(4, "APIキー", self.status_keys)
-        add_row(5, "更新モード", self.status_mode)
-        add_row(6, "自動更新（Actions）", self.status_actions_time, value_font=("Segoe UI", 11, "bold"))
-        add_row(7, "cron / workflow", self.status_actions_detail)
+    # ---------- canvas handlers ----------
+    def _on_inner_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfigure(self._inner_id, width=event.width)
 
-        # ---- GitHub Remote ----
-        rst = ttk.LabelFrame(left, text="GitHub（リモート）")
-        rst.pack(fill="x", pady=(0, 10))
+    # ---------- logging ----------
+    def _append_log(self, msg: str, tag: str = "INFO"):
+        ts = datetime.now(JST).strftime("%H:%M:%S")
+        self.txt_log.configure(state="normal")
+        self.txt_log.insert("end", f"[{ts}] {msg}\n", tag)
+        self.txt_log.see("end")
+        self.txt_log.configure(state="disabled")
 
-        rgrid = ttk.Frame(rst)
-        rgrid.pack(fill="x", padx=10, pady=10)
-        rgrid.columnconfigure(1, weight=1)
+    def log_info(self, msg: str):
+        self._append_log(f"⏳ {msg}", "INFO")
 
-        def add_rrow(r: int, label: str, var: tk.StringVar, value_font=None):
-            ttk.Label(rgrid, text=label).grid(row=r, column=0, sticky="w", pady=2)
-            ttk.Label(rgrid, textvariable=var, font=value_font, justify="left").grid(
-                row=r, column=1, sticky="w", pady=2
-            )
+    def log_ok(self, msg: str):
+        self._append_log(f"✅ {msg}", "OK")
 
-        add_rrow(0, "更新日時", self.status_remote_updated, value_font=("Segoe UI", 11, "bold"))
-        add_rrow(1, "作品数", self.status_remote_works)
-        add_rrow(2, "画像あり", self.status_remote_imgs)
-        add_rrow(3, "動画あり", self.status_remote_mov)
+    def log_err(self, msg: str):
+        self._append_log(f"❌ {msg}", "ERR")
 
-        btnrow = ttk.Frame(rst)
-        btnrow.pack(fill="x", padx=10, pady=(0, 10))
-        ttk.Button(btnrow, text="リモート再読込", command=self.load_remote_stats).pack(side="left")
-        ttk.Label(btnrow, textvariable=self.status_remote_note, foreground="#555").pack(side="left", padx=(10, 0))
-        ttk.Button(btnrow, text="manifestを開く", command=self.open_remote_manifest).pack(side="right")
+    def log_raw(self, msg: str):
+        # subprocess raw line (indent)
+        self._append_log(f"   {msg}", "RAW")
 
-        # ---- Settings ----
-        setf = ttk.LabelFrame(left, text="設定")
-        setf.pack(fill="both", expand=True)
+    def set_state(self, s: str):
+        self.var_run_state.set(s)
 
-        # mode
-        modef = ttk.Frame(setf)
-        modef.pack(fill="x", padx=12, pady=(12, 6))
-        ttk.Label(modef, text="更新モード", width=18).pack(side="left")
-        ttk.Radiobutton(modef, text="維持更新（OFF）", value="update", variable=self.var_mode).pack(side="left")
-        ttk.Radiobutton(modef, text="追加更新（ON）", value="full", variable=self.var_mode).pack(
-            side="left", padx=(10, 0)
-        )
+    # ---------- UI builders ----------
+    def _build_scroll_ui(self):
+        pad = {"padx": 8, "pady": 8}
 
-        ttk.Label(
-            setf,
-            text="※ OFF=既存作品だけ更新 / ON=新規追加もする（本番）",
-            foreground="#555",
-        ).pack(fill="x", padx=12, pady=(0, 8))
+        def row(parent, label, var):
+            r = ttk.Frame(parent)
+            r.pack(fill="x", padx=8, pady=2)
+            ttk.Label(r, text=label, width=16).pack(side="left")
+            ttk.Label(r, textvariable=var).pack(side="left", fill="x", expand=True)
 
-        # trim
-        trimf = ttk.Frame(setf)
-        trimf.pack(fill="x", padx=12, pady=6)
-        ttk.Label(trimf, text="最大件数（テスト）", width=18).pack(side="left")
-        ttk.Checkbutton(trimf, text="ON", variable=self.var_trim_enable).pack(side="left")
-        ttk.Label(trimf, text="件数").pack(side="left", padx=(10, 4))
-        self.ent_trim = ttk.Entry(trimf, textvariable=self.var_trim_to, width=8)
-        self.ent_trim.pack(side="left")
-        ttk.Button(trimf, text="件数削除（今のデータ）", command=self.trim_now).pack(side="right")
+        # Local status
+        lf = ttk.LabelFrame(self.inner, text="ローカル（テスト）: 現在の状況")
+        lf.pack(fill="x", **pad)
+        row(lf, "更新モード", self.local_status_mode)
+        row(lf, "最大件数", self.local_status_trim)
+        row(lf, "自動更新", self.local_status_auto)
+        row(lf, "自動更新時間", self.local_status_time)
 
-        # time + workflow
-        timef = ttk.Frame(setf)
-        timef.pack(fill="x", padx=12, pady=(10, 6))
-        ttk.Label(timef, text="自動更新（Actions）", width=18).pack(side="left")
-        self.ent_time = ttk.Entry(timef, textvariable=self.var_time, width=8)
-        self.ent_time.pack(side="left")
-        ttk.Label(timef, text="(HH:MM)").pack(side="left", padx=(6, 0))
-        ttk.Checkbutton(timef, text="workflowへ反映", variable=self.var_apply_workflow).pack(side="right")
+        # GitHub status
+        gf = ttk.LabelFrame(self.inner, text="GitHub（本番）: 現在の状況")
+        gf.pack(fill="x", **pad)
+        row(gf, "更新モード", self.gh_status_mode)
+        row(gf, "最大件数", self.gh_status_trim)
+        row(gf, "自動更新", self.gh_status_auto)
+        row(gf, "自動更新時間", self.gh_status_time)
+        row(gf, "最終取得", self.gh_status_updated)
 
-        wff = ttk.Frame(setf)
-        wff.pack(fill="x", padx=12, pady=(0, 10))
-        ttk.Label(wff, text="workflowファイル", width=18).pack(side="left")
-        self.cmb_wf = ttk.Combobox(wff, textvariable=self.var_workflow_path, state="readonly")
-        self.cmb_wf.pack(side="left", fill="x", expand=True)
+        ttk.Label(gf, text="※自動更新/時間は Variables(CATALOG_AUTO_UPDATE_*) を優先。無い場合のみ workflow cron を参照（表示のみ）。").pack(anchor="w", padx=8, pady=(2, 6))
 
+        # Local settings
+        sf = ttk.LabelFrame(self.inner, text="設定（ローカル / GitHub反映元）")
+        sf.pack(fill="x", **pad)
 
-        # remote manifest URL
-        remotef = ttk.Frame(setf)
-        remotef.pack(fill="x", padx=12, pady=(0, 6))
-        ttk.Label(remotef, text="リモートmanifest", width=18).pack(side="left")
-        self.ent_remote = ttk.Entry(remotef, textvariable=self.var_remote_manifest_url)
-        self.ent_remote.pack(side="left", fill="x", expand=True)
-
-        ttk.Label(
-            setf,
-            text="※例: https://raw.githubusercontent.com/OWNER/REPO/main/src/data/works_manifest.json",
-            foreground="#555",
-        ).pack(fill="x", padx=12, pady=(0, 10))
-
-        # API keys
-        keyf = ttk.LabelFrame(setf, text="APIキー（ローカル）")
-        keyf.pack(fill="x", padx=12, pady=(6, 12))
-
-        krow1 = ttk.Frame(keyf)
-        krow1.pack(fill="x", padx=10, pady=(10, 4))
-        ttk.Label(krow1, text="DMM_API_ID", width=18).pack(side="left")
-        self.ent_api = ttk.Entry(krow1, textvariable=self.var_api_id, show="•")
-        self.ent_api.pack(side="left", fill="x", expand=True)
-
-        krow2 = ttk.Frame(keyf)
-        krow2.pack(fill="x", padx=10, pady=4)
-        ttk.Label(krow2, text="DMM_AFFILIATE_ID", width=18).pack(side="left")
-        self.ent_aff = ttk.Entry(krow2, textvariable=self.var_aff_id, show="•")
-        self.ent_aff.pack(side="left", fill="x", expand=True)
-
-        krow3 = ttk.Frame(keyf)
-        krow3.pack(fill="x", padx=10, pady=(4, 10))
+        r1 = ttk.Frame(sf); r1.pack(fill="x", padx=8, pady=3)
         ttk.Checkbutton(
-            krow3, text="キーを表示", variable=self.var_show_keys, command=self._toggle_show_keys
+            r1,
+            text="新規作品も追加する（ON=新しい作品を追加 / OFF=既存作品だけ更新）",
+            variable=self.var_add_new
         ).pack(side="left")
-        ttk.Button(krow3, text="保存（.catalog_secrets.json）", command=self.save_keys).pack(side="right")
 
-        ttk.Label(keyf, text="※このファイルはGitHubにcommitしないでください。", foreground="#a33").pack(
-            anchor="w", padx=10, pady=(0, 10)
+        r2 = ttk.Frame(sf); r2.pack(fill="x", padx=8, pady=3)
+        ttk.Checkbutton(r2, text="最大件数（テスト）ON", variable=self.var_trim_en).pack(side="left")
+        ttk.Label(r2, text="件数").pack(side="left", padx=(10, 0))
+        ttk.Entry(r2, textvariable=self.var_trim_to, width=8).pack(side="left", padx=(6, 0))
+
+        r3 = ttk.Frame(sf); r3.pack(fill="x", padx=8, pady=3)
+        ttk.Checkbutton(r3, text="自動更新（本番の設定として保存）", variable=self.var_auto_en).pack(side="left")
+        ttk.Label(r3, text="時間(JST)").pack(side="left", padx=(10, 0))
+        ttk.Entry(r3, textvariable=self.var_auto_time, width=7).pack(side="left", padx=(6, 0))
+        ttk.Label(r3, text="workflow").pack(side="left", padx=(10, 0))
+        ttk.Entry(r3, textvariable=self.var_workflow_path, width=32).pack(side="left", padx=(6, 0))
+
+        # GitHub settings
+        gsf = ttk.LabelFrame(self.inner, text="GitHub 本番連携（表示/実行）")
+        gsf.pack(fill="x", **pad)
+
+        r0 = ttk.Frame(gsf); r0.pack(fill="x", padx=8, pady=3)
+        ttk.Checkbutton(r0, text="GitHub連携を有効化", variable=self.var_gh_enabled).pack(side="left")
+        ttk.Checkbutton(r0, text="操作ボタンはGitHubで実行", variable=self.var_gh_run_on_github).pack(side="left", padx=(12, 0))
+
+        rA = ttk.Frame(gsf); rA.pack(fill="x", padx=8, pady=3)
+        ttk.Label(rA, text="Repo").pack(side="left")
+        ttk.Entry(rA, textvariable=self.var_gh_repo, width=28).pack(side="left", padx=(6, 0))
+        ttk.Label(rA, text="Branch").pack(side="left", padx=(10, 0))
+        ttk.Entry(rA, textvariable=self.var_gh_branch, width=12).pack(side="left", padx=(6, 0))
+
+        rC = ttk.Frame(gsf); rC.pack(fill="x", padx=8, pady=3)
+        ttk.Label(rC, text="PAT").pack(side="left")
+        self.ent_pat = ttk.Entry(rC, show="*", width=40)
+        self.ent_pat.pack(side="left", padx=(6, 0))
+        self.ent_pat.insert(0, self.secrets.get("GITHUB_PAT", ""))
+        ttk.Button(rC, text="PAT保存 (save)", command=self.save_pat).pack(side="left", padx=(8, 0))
+        ttk.Label(rC, text="※workflow cron表示にはContents Readが必要").pack(side="left", padx=(10, 0))
+
+        # DMM API (two rows)
+        rD1 = ttk.Frame(gsf); rD1.pack(fill="x", padx=8, pady=3)
+        ttk.Label(rD1, text="DMM API").pack(side="left")
+        self.ent_dmm_api = ttk.Entry(rD1, show="*", width=30)
+        self.ent_dmm_api.pack(side="left", padx=(6, 0))
+        self.ent_dmm_api.insert(0, self.secrets.get("DMM_API_ID", ""))
+
+        rD2 = ttk.Frame(gsf); rD2.pack(fill="x", padx=8, pady=3)
+        ttk.Label(rD2, text="AFFILIATE ID").pack(side="left")
+        self.ent_dmm_aff = ttk.Entry(rD2, show="*", width=30)
+        self.ent_dmm_aff.pack(side="left", padx=(6, 0))
+        self.ent_dmm_aff.insert(0, self.secrets.get("DMM_AFFILIATE_ID", ""))
+
+        ttk.Button(rD2, text="API保存 (save)", command=self.save_dmm_keys).pack(side="left", padx=(8, 0))
+        ttk.Label(rD2, text="※ローカルfetch用（.catalog_secrets.json / GitHubには送られません）").pack(side="left", padx=(10, 0))
+
+    def _build_fixed_actions(self):
+        r = ttk.Frame(self.fixed_actions)
+        r.pack(fill="x", padx=8, pady=8)
+
+        ttk.Button(r, text="保存して反映 (save)", command=self.save_and_apply).pack(side="left")
+        ttk.Checkbutton(r, text="GitHubにも反映（Variables更新）", variable=self.var_push_github_on_save).pack(side="left", padx=(10, 0))
+        ttk.Button(r, text="再読込 (reload)", command=self.reload).pack(side="left", padx=(12, 0))
+
+        r2 = ttk.Frame(self.fixed_actions)
+        r2.pack(fill="x", padx=8, pady=(0, 8))
+
+        # 1段目：単体
+        ttk.Button(r2, text="取得のみ (fetch)", command=lambda: self.run_task("fetch")).pack(side="left")
+        ttk.Button(r2, text="生成のみ (build)", command=lambda: self.run_task("build")).pack(side="left", padx=(8, 0))
+        ttk.Button(r2, text="No image掃除 (sanitize)", command=lambda: self.run_task("sanitize")).pack(side="left", padx=(8, 0))
+
+        # 2段目：組み合わせ（必ず見える）
+        r3 = ttk.Frame(self.fixed_actions)
+        r3.pack(fill="x", padx=8, pady=(0, 10))
+        ttk.Button(r3, text="取得→生成 (fetch+build)", command=lambda: self.run_task("fetch_build")).pack(side="left")
+        ttk.Button(r3, text="取得→掃除→生成 (full)", command=lambda: self.run_task("full")).pack(side="left", padx=(8, 0))
+
+    # ---------- local status ----------
+    def refresh_local_status(self):
+        mode = "新規も追加（新しい作品を追加）" if self.var_add_new.get() else "既存のみ更新（新規は追加しない）"
+        trim = f"ON（{self.var_trim_to.get()}件）" if self.var_trim_en.get() else "OFF"
+        auto = "ON" if self.var_auto_en.get() else "OFF"
+        t = self.var_auto_time.get().strip() if self.var_auto_en.get() else "-"
+        self.local_status_mode.set(mode)
+        self.local_status_trim.set(trim)
+        self.local_status_auto.set(auto)
+        self.local_status_time.set(t)
+
+    # ---------- GitHub helpers ----------
+    def _get_gh(self) -> GH:
+        if not self.var_gh_enabled.get():
+            raise RuntimeError("GitHub連携がOFFです")
+        repo = self.var_gh_repo.get().strip()
+        if "/" not in repo:
+            raise RuntimeError("Repo は OWNER/REPO 形式で入力してください")
+        owner, name = repo.split("/", 1)
+        token = self.ent_pat.get().strip() or self.secrets.get("GITHUB_PAT", "")
+        if not token:
+            raise RuntimeError("PAT が未設定です（PAT保存を押してください）")
+        return GH(
+            owner=owner.strip(),
+            repo=name.strip(),
+            branch=self.var_gh_branch.get().strip() or "main",
+            token=token,
+            workflow_path=self.var_workflow_path.get().strip() or ".github/workflows/update.yml",
         )
 
-        # ---- Right: Actions + Log ----
-        runbox = ttk.LabelFrame(right, text="操作")
-        runbox.pack(fill="x")
-
-        ttk.Button(runbox, text="取得→掃除→生成（fetch→sanitize→build）", command=self.run_fetch_build).pack(
-            fill="x", padx=12, pady=(12, 6)
-        )
-        ttk.Button(runbox, text="取得のみ（fetch）", command=self.run_fetch).pack(fill="x", padx=12, pady=6)
-        ttk.Button(runbox, text="生成のみ（build）", command=self.run_build).pack(fill="x", padx=12, pady=6)
-        ttk.Button(runbox, text="No image掃除（sanitize）", command=self.run_sanitize).pack(
-            fill="x", padx=12, pady=(6, 12)
-        )
-
-        logbox = ttk.LabelFrame(right, text="ログ")
-        logbox.pack(fill="both", expand=True, pady=(10, 0))
-
-        self.txt = tk.Text(logbox, height=16, wrap="word")
-        yscroll = ttk.Scrollbar(logbox, orient="vertical", command=self.txt.yview)
-        self.txt.configure(yscrollcommand=yscroll.set)
-        self.txt.grid(row=0, column=0, sticky="nsew", padx=(12, 0), pady=12)
-        yscroll.grid(row=0, column=1, sticky="ns", padx=(0, 12), pady=12)
-        logbox.rowconfigure(0, weight=1)
-        logbox.columnconfigure(0, weight=1)
-        self.txt.configure(state="disabled")
-
-        # Footer (always visible)
-        foot = ttk.Frame(self)
-        foot.pack(fill="x", **pad_outer)
-
-        ttk.Checkbutton(
-            foot, text="変更したら自動保存/反映", variable=self.var_auto_apply, command=self._on_auto_apply_toggle
-        ).pack(side="left")
-        ttk.Label(foot, textvariable=self.status_auto, foreground="#555").pack(side="left", padx=(10, 0))
-
-        ttk.Button(foot, text="再読み込み", command=self.reload_all).pack(side="right")
-        ttk.Button(foot, text="閉じる", command=self.master.destroy).pack(side="right", padx=(8, 0))
-        ttk.Button(foot, text="保存して反映", command=self.apply_all).pack(side="right", padx=(8, 0))
-
-        # ウィンドウが小さすぎてフッターが隠れないよう、必要サイズにフィット
-        self._fit_window_to_content()
-
-    def _fit_window_to_content(self) -> None:
-        """Ensure the window opens large enough to show the footer/buttons."""
-        try:
-            self.master.update_idletasks()
-            req_w = self.master.winfo_reqwidth()
-            req_h = self.master.winfo_reqheight()
-            cur_w = self.master.winfo_width()
-            cur_h = self.master.winfo_height()
-            scr_w = self.master.winfo_screenwidth()
-            scr_h = self.master.winfo_screenheight()
-
-            w = min(max(req_w + 20, cur_w), max(320, scr_w - 80))
-            h = min(max(req_h + 20, cur_h), max(240, scr_h - 120))
-            if w > 100 and h > 100:
-                self.master.geometry(f"{w}x{h}")
-        except Exception:
-            pass
-
-    def _toggle_show_keys(self) -> None:
-        show = self.var_show_keys.get()
-        self.ent_api.configure(show="" if show else "•")
-        self.ent_aff.configure(show="" if show else "•")
-
-    # ---------- auto apply ----------
-    def _bind_auto_apply(self) -> None:
-        # 変更が頻発するので debounce する
-        for v in [self.var_mode, self.var_trim_to, self.var_time, self.var_workflow_path, self.var_remote_manifest_url]:
-            v.trace_add("write", lambda *_: self._schedule_auto_apply())
-        for v in [self.var_trim_enable, self.var_apply_workflow]:
-            v.trace_add("write", lambda *_: self._schedule_auto_apply())
-
-        # Entryのフォーカスアウトでも反映（入力途中の事故を減らす）
-        self.ent_trim.bind("<FocusOut>", lambda e: self._schedule_auto_apply(force=True))
-        self.ent_time.bind("<FocusOut>", lambda e: self._schedule_auto_apply(force=True))
-        try:
-            self.ent_remote.bind("<FocusOut>", lambda e: self._schedule_auto_apply(force=True))
-        except Exception:
-            pass
-
-    def _on_auto_apply_toggle(self) -> None:
-        if self.var_auto_apply.get():
-            self.status_auto.set("自動反映: ON")
-            self._schedule_auto_apply(force=True)
-        else:
-            self.status_auto.set("自動反映: OFF")
-
-    def _schedule_auto_apply(self, force: bool = False) -> None:
-        if not self.var_auto_apply.get() and not force:
-            return
-        if self._is_running:
-            # 実行中は少し後に再予約
-            self.master.after(1200, lambda: self._schedule_auto_apply(force=force))
-            return
-
-        if self._auto_job:
+    def refresh_github_status_async(self):
+        def job():
             try:
-                self.master.after_cancel(self._auto_job)
-            except Exception:
-                pass
-            self._auto_job = None
+                gh = self._get_gh()
+                vars_ = gh.list_variables()
 
-        delay = 250 if force else 800
-        self._auto_job = self.master.after(delay, lambda: self.apply_all(quiet=True))
+                add_new = safe_bool(vars_.get("CATALOG_ADD_NEW_WORKS", "false"))
+                trim_en = safe_bool(vars_.get("CATALOG_TRIM_ENABLE", "false"))
+                trim_to = (vars_.get("CATALOG_TRIM_TO", "") or "").strip()
+                mode = "新規も追加（新しい作品を追加）" if add_new else "既存のみ更新（新規は追加しない）"
+                trim = f"ON（{trim_to}件）" if trim_en and trim_to else "OFF"
 
-    # ---------- helpers ----------
-    def log(self, msg: str) -> None:
-        self.txt.configure(state="normal")
-        self.txt.insert("end", msg + "\n")
-        self.txt.see("end")
-        self.txt.configure(state="disabled")
+                auto_en_v = vars_.get("CATALOG_AUTO_UPDATE_ENABLED", None)
+                auto_time_v = vars_.get("CATALOG_AUTO_UPDATE_TIME_JST", None)
 
-    def _preferred_encoding(self) -> str:
-        enc = locale.getpreferredencoding(False) or "utf-8"
-        return enc
-
-    def _mask_secrets_line(self, line: str) -> str:
-        for k in ["DMM_API_ID", "DMM_AFFILIATE_ID"]:
-            if k in line:
-                return re.sub(r"([A-Za-z0-9_\-]{6,})", "***", line)
-        return line
-
-    def _get_effective_env(self) -> Tuple[Dict[str, str], List[str]]:
-        env = os.environ.copy()
-        missing: List[str] = []
-
-        api = (env.get("DMM_API_ID") or "").strip().strip('"')
-        aff = (env.get("DMM_AFFILIATE_ID") or "").strip().strip('"')
-
-        if not api or not aff:
-            sec = load_secrets(self.root)
-            if not api:
-                api = sec.get("DMM_API_ID", "").strip().strip('"')
-            if not aff:
-                aff = sec.get("DMM_AFFILIATE_ID", "").strip().strip('"')
-
-        if api:
-            env["DMM_API_ID"] = api
-        else:
-            missing.append("DMM_API_ID")
-
-        if aff:
-            env["DMM_AFFILIATE_ID"] = aff
-        else:
-            missing.append("DMM_AFFILIATE_ID")
-
-        return env, missing
-
-    # ---------- load/save ----------
-    def reload_all(self, show_toast: bool = True) -> None:
-        try:
-            self.cfg = ensure_default_config(self.cfg_path, self.root)
-            self.secrets = load_secrets(self.root)
-
-            # workflows list
-            wf_dir = self.root / ".github" / "workflows"
-            wf_files = sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml")))
-            wf_rels = [str(p.relative_to(self.root)).replace("\\", "/") for p in wf_files]
-            self.cmb_wf["values"] = wf_rels
-
-            # config -> vars
-            fetch = self.cfg.get("fetch") or {}
-            add_new = bool(fetch.get("add_new_works", False))
-            self.var_mode.set("full" if add_new else "update")
-            self.var_trim_enable.set(bool(fetch.get("trim_enable", False)))
-            self.var_trim_to.set(str(int(fetch.get("trim_to", 300))))
-
-            upd = self.cfg.get("update") or {}
-            self.var_time.set(str(upd.get("jst_time", "03:00")))
-            wf_rel = str((upd.get("workflow_path") or "")).strip()
-            if wf_rels and wf_rel not in wf_rels:
-                wf_rel = wf_rels[0]
-            self.var_workflow_path.set(wf_rel)
-
-            remote = self.cfg.get("remote") or {}
-            self.var_remote_manifest_url.set(str(remote.get("manifest_url", "")).strip())
-
-            # status: works
-            count, with_imgs, with_mov, mtime_s = read_works_stats(self.data_dir, self.legacy_works_path)
-            self.status_works.set(str(count))
-            self.status_imgs.set(str(with_imgs))
-            self.status_mov.set(str(with_mov))
-            self.status_mtime.set(mtime_s)
-
-            # status: keys
-            _, missing = self._get_effective_env()
-            self.status_keys.set("OK" if not missing else f"未設定: {', '.join(missing)}")
-
-            # status: fetch switches in file
-            a, te, tt = read_fetch_toggles(self.fetch_path)
-
-            def onoff(v: Optional[bool]) -> str:
-                if v is True:
-                    return "ON"
-                if v is False:
-                    return "OFF"
-                return "?"
-
-            # 更新モード（表示）
-            mode_text = "維持更新（OFF）" if (self.var_mode.get() == "update") else "追加更新（ON）"
-            line1 = f"{mode_text} /ADD_NEW_WORKS={onoff(a)}"
-            line2 = f"最大件数 {tt} ({onoff(te)}) / (TRIM)={onoff(te)}"
-            self.status_mode.set(line1 + "\n" + line2)
-
-            # status: workflow cron
-            wf_rel = self.var_workflow_path.get().strip()
-            if wf_rel:
-                wf_path = self.root / wf_rel
-                if wf_path.exists():
-                    yml = wf_path.read_text(encoding="utf-8")
-                    cron = parse_cron_from_workflow(yml)
-                    if cron:
-                        jst = cron_to_jst_time(cron) or "?"
-                        self.status_actions_time.set(f"{jst}（JST）")
-                        self.status_actions_detail.set(f"{cron} / {wf_rel}")
-                    else:
-                        self.status_actions_time.set("(cron未設定)")
-                        self.status_actions_detail.set(wf_rel)
+                if auto_en_v is not None or auto_time_v is not None:
+                    auto = "ON" if safe_bool(auto_en_v or "false") else "OFF"
+                    auto_time = (auto_time_v or "").strip() if auto == "ON" else "-"
+                    if auto == "ON" and not auto_time:
+                        auto_time = "（未設定）"
                 else:
-                    self.status_actions_time.set("(workflow未検出)")
-                    self.status_actions_detail.set(wf_rel)
-            else:
-                self.status_actions_time.set("(workflow未選択)")
-                self.status_actions_detail.set("-")
-
-            # secrets vars
-            if self.var_api_id.get().strip() == "":
-                self.var_api_id.set(self.secrets.get("DMM_API_ID", ""))
-            if self.var_aff_id.get().strip() == "":
-                self.var_aff_id.set(self.secrets.get("DMM_AFFILIATE_ID", ""))
-
-            if show_toast:
-                self.log("[OK] 読み込みました")
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-
-    def open_remote_manifest(self) -> None:
-        url = self.var_remote_manifest_url.get().strip()
-        if not url:
-            messagebox.showinfo("リモート", "manifest URL が未設定です")
-            return
-        try:
-            webbrowser.open(url)
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-    def load_remote_stats(self) -> None:
-        url = self.var_remote_manifest_url.get().strip()
-        if not url:
-            self.status_remote_updated.set("-")
-            self.status_remote_works.set("-")
-            self.status_remote_imgs.set("-")
-            self.status_remote_mov.set("-")
-            self.status_remote_note.set("manifest URL未設定")
-            return
-
-        self.status_remote_note.set("取得中...")
-
-        def worker():
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "CatalogManager/1.0"})
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    raw = resp.read().decode("utf-8", "replace")
-                mf = json.loads(raw) if raw.strip() else {}
-
-                count = int(mf.get("count") or 0)
-                with_imgs = int(mf.get("with_sample_images") or 0)
-                with_mov = int(mf.get("with_sample_movies") or 0)
-
-                updated = str(mf.get("updated_at") or "").strip()
-                updated_disp = "-"
-                if updated:
+                    # fallback to cron (read-only)
+                    auto, auto_time = "（取得中）", "（取得中）"
                     try:
-                        dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
-                        updated_disp = dt.astimezone(JST).strftime("%Y-%m-%d %H:%M:%S") + "（JST）"
-                    except Exception:
-                        updated_disp = updated
+                        wf_text = gh.get_workflow_text()
+                        cron = parse_cron_from_workflow(wf_text)
+                        if cron:
+                            auto = "ON"
+                            auto_time = cron_to_jst_time(cron) or f"(cron) {cron}"
+                        else:
+                            auto = "OFF"
+                            auto_time = "-"
+                    except Exception as e:
+                        auto = "（取得不可）"
+                        auto_time = "PATにContents Read"
+                        self.master.after(0, lambda: self.log_info(f"GitHub: workflow cron参照失敗: {e}"))
 
-                def apply():
-                    self.status_remote_updated.set(updated_disp)
-                    self.status_remote_works.set(str(count))
-                    self.status_remote_imgs.set(str(with_imgs))
-                    self.status_remote_mov.set(str(with_mov))
-                    self.status_remote_note.set("OK")
+                def apply_ui():
+                    self.gh_status_mode.set(mode)
+                    self.gh_status_trim.set(trim)
+                    self.gh_status_auto.set(auto)
+                    self.gh_status_time.set(auto_time)
+                    self.gh_status_updated.set(now_jst_str())
+                    self.log_ok("GitHub設定 取得OK")
 
-                self.master.after(0, apply)
-
+                self.master.after(0, apply_ui)
             except Exception as e:
-                def apply_err():
-                    self.status_remote_note.set(f"取得失敗: {e}")
-                self.master.after(0, apply_err)
+                self.master.after(0, lambda: self.log_err(f"GitHub設定取得エラー: {e}"))
 
-        threading.Thread(target=worker, daemon=True).start()
+        threading.Thread(target=job, daemon=True).start()
 
-    def _validate_time(self) -> str:
-        t = self.var_time.get().strip()
-        _ = jst_time_to_cron(t)
-        return t
+    def push_github_variables_async(self):
+        def job():
+            try:
+                gh = self._get_gh()
+                gh.upsert_variable("CATALOG_ADD_NEW_WORKS", "true" if self.var_add_new.get() else "false")
+                gh.upsert_variable("CATALOG_TRIM_ENABLE", "true" if self.var_trim_en.get() else "false")
+                gh.upsert_variable("CATALOG_TRIM_TO", str(int(self.var_trim_to.get())))
+                gh.upsert_variable("CATALOG_SANITIZE_LEARN", "false")
 
-    def _validate_trim_to(self) -> int:
-        s = self.var_trim_to.get().strip()
-        n = int(s)
-        if n <= 0:
-            raise ValueError("件数は 1 以上を指定してください")
-        return n
+                gh.upsert_variable("CATALOG_AUTO_UPDATE_ENABLED", "true" if self.var_auto_en.get() else "false")
+                gh.upsert_variable("CATALOG_AUTO_UPDATE_TIME_JST", self.var_auto_time.get().strip())
 
-    def save_keys(self) -> None:
-        try:
-            api = self.var_api_id.get().strip()
-            aff = self.var_aff_id.get().strip()
-            if not api or not aff:
-                raise ValueError("DMM_API_ID と DMM_AFFILIATE_ID を入力してください")
-            save_secrets(self.root, api, aff)
-            self.log("[OK] .catalog_secrets.json を保存しました（※commitしないでください）")
-            self.reload_all(show_toast=False)
-        except Exception as e:
-            messagebox.showerror("保存エラー", str(e))
+                self.master.after(0, lambda: self.log_ok("GitHub variables 更新OK"))
+                self.master.after(0, self.refresh_github_status_async)
+            except Exception as e:
+                self.master.after(0, lambda: self.log_err(f"GitHub反映エラー（variables）: {e}"))
 
-    def apply_all(self, quiet: bool = False) -> None:
-        """保存（config）+ 反映（fetchトグル / optional workflow）をまとめて実行。"""
-        try:
-            # validate
-            n = self._validate_trim_to()
-            t = self._validate_time()
+        threading.Thread(target=job, daemon=True).start()
 
-            # save config
-            self.cfg.setdefault("fetch", {})["add_new_works"] = (self.var_mode.get() == "full")
-            self.cfg["fetch"]["trim_enable"] = bool(self.var_trim_enable.get())
-            self.cfg["fetch"]["trim_to"] = int(n)
+    def save_pat(self):
+        tok = self.ent_pat.get().strip()
+        if not tok:
+            messagebox.showerror("PAT", "PATが空です")
+            return
+        save_secret_fields(self.root, GITHUB_PAT=tok)
+        self.secrets["GITHUB_PAT"] = tok
+        self.log_ok("PAT保存OK（.catalog_secrets.json）")
 
-            self.cfg.setdefault("update", {})["jst_time"] = t
-            self.cfg["update"]["workflow_path"] = self.var_workflow_path.get().strip()
-            self.cfg.setdefault("remote", {})["manifest_url"] = self.var_remote_manifest_url.get().strip()
-            save_json(self.cfg_path, self.cfg)
+    def save_dmm_keys(self):
+        api = self.ent_dmm_api.get().strip()
+        aff = self.ent_dmm_aff.get().strip()
+        if not api or not aff:
+            messagebox.showerror("DMM API", "DMM API / AFFILIATE ID の両方を入力してください")
+            return
+        save_secret_fields(self.root, DMM_API_ID=api, DMM_AFFILIATE_ID=aff)
+        self.secrets["DMM_API_ID"] = api
+        self.secrets["DMM_AFFILIATE_ID"] = aff
+        self.log_ok("API保存OK（.catalog_secrets.json）")
 
-            # apply to fetch script
-            apply_fetch_toggles(
-                self.fetch_path,
-                add_new=(self.var_mode.get() == "full"),
-                trim_enable=bool(self.var_trim_enable.get()),
-                trim_to=int(n),
-            )
+    # ---------- actions ----------
+    def reload(self):
+        self.cfg = ensure_config(self.cfg_path, self.root)
+        self.secrets = load_secrets(self.root)
 
-            # apply to workflow
-            if self.var_apply_workflow.get():
-                wf_rel = self.var_workflow_path.get().strip()
-                if wf_rel:
-                    wf_path = self.root / wf_rel
-                    cron = jst_time_to_cron(t)
-                    ok = apply_cron_to_workflow(wf_path, cron)
-                    if not ok and not quiet:
-                        self.log("[WARN] workflow の cron を更新できませんでした（cron行が見つからない/ファイルなし）")
+        self.var_add_new.set(safe_bool(self.cfg["fetch"].get("add_new_works")))
+        self.var_trim_en.set(safe_bool(self.cfg["fetch"].get("trim_enable")))
+        self.var_trim_to.set(int(self.cfg["fetch"].get("trim_to") or 300))
+        self.var_auto_en.set(safe_bool(self.cfg["update"].get("enabled")))
+        self.var_auto_time.set(str(self.cfg["update"].get("jst_time") or "03:00"))
+        self.var_workflow_path.set(str(self.cfg["update"].get("workflow_path") or ".github/workflows/update.yml"))
 
-            if not quiet:
-                self.log("[OK] 保存して反映しました")
-            self.status_auto.set("自動反映: OK" if self.var_auto_apply.get() else "")
-            self.reload_all(show_toast=False)
-        except Exception as e:
-            if quiet:
-                self.status_auto.set(f"自動反映: エラー（{e}）")
-                return
-            messagebox.showerror("保存/反映エラー", str(e))
+        gh = self.cfg.get("github") or {}
+        self.var_gh_enabled.set(safe_bool(gh.get("enabled")))
+        self.var_gh_repo.set(str(gh.get("repo") or ""))
+        self.var_gh_branch.set(str(gh.get("branch") or "main"))
+        self.var_gh_run_on_github.set(safe_bool(gh.get("run_buttons_on_github", True)))
+        self.var_push_github_on_save.set(safe_bool(gh.get("push_on_save", True)))
 
-    def trim_now(self) -> None:
-        try:
-            n = self._validate_trim_to()
-            kept = trim_works_data(self.data_dir, self.legacy_works_path, n)
-            self.log(f"[OK] データを {kept} 件にしました")
-            self.reload_all(show_toast=False)
-        except Exception as e:
-            messagebox.showerror("件数削除エラー", str(e))
+        # reflect secrets in entries
+        self.ent_pat.delete(0, "end")
+        self.ent_pat.insert(0, self.secrets.get("GITHUB_PAT", ""))
+        self.ent_dmm_api.delete(0, "end")
+        self.ent_dmm_api.insert(0, self.secrets.get("DMM_API_ID", ""))
+        self.ent_dmm_aff.delete(0, "end")
+        self.ent_dmm_aff.insert(0, self.secrets.get("DMM_AFFILIATE_ID", ""))
 
-    # ---------- runners ----------
-    def _run_subprocess(self, script_rel: str, title: str, args: Optional[List[str]] = None) -> None:
-        cmd = [sys.executable, script_rel] + (args or [])
+        self.refresh_local_status()
+        self.log_ok("再読込OK")
+        self.refresh_github_status_async()
 
-        env, missing = self._get_effective_env()
-        needs_key = "fetch_to_works_fanza.py" in script_rel
-        if needs_key and missing:
-            messagebox.showerror(
-                "APIキーが未設定",
-                "DMM_API_ID / DMM_AFFILIATE_ID が未設定です。\n\n"
-                "方法1：Windowsの環境変数に設定する\n"
-                "方法2：この画面の『APIキー（ローカル）』に入力→保存\n",
-            )
-            self.log(f"✖ missing env: {', '.join(missing)}")
+    def save_and_apply(self):
+        t = self.var_auto_time.get().strip()
+        if t and not re.match(r"^\d{2}:\d{2}$", t):
+            messagebox.showerror("入力エラー", "自動更新時間は HH:MM 形式で入力してください")
             return
 
-        enc = self._preferred_encoding()
+        self.cfg.setdefault("fetch", {})
+        self.cfg["fetch"]["add_new_works"] = bool(self.var_add_new.get())
+        self.cfg["fetch"]["trim_enable"] = bool(self.var_trim_en.get())
+        self.cfg["fetch"]["trim_to"] = int(self.var_trim_to.get())
 
-        def worker():
-            self._is_running = True
-            self.log(f"\n▶ {title} 実行中...")
+        self.cfg.setdefault("update", {})
+        self.cfg["update"]["enabled"] = bool(self.var_auto_en.get())
+        self.cfg["update"]["jst_time"] = t
+        self.cfg["update"]["workflow_path"] = self.var_workflow_path.get().strip()
 
+        self.cfg.setdefault("github", {})
+        self.cfg["github"]["enabled"] = bool(self.var_gh_enabled.get())
+        self.cfg["github"]["repo"] = self.var_gh_repo.get().strip()
+        self.cfg["github"]["branch"] = self.var_gh_branch.get().strip() or "main"
+        self.cfg["github"]["run_buttons_on_github"] = bool(self.var_gh_run_on_github.get())
+        self.cfg["github"]["push_on_save"] = bool(self.var_push_github_on_save.get())
+        self.cfg["github"]["sync_vars_on_save"] = bool(self.var_push_github_on_save.get())  # 互換
+
+        save_json(self.cfg_path, self.cfg)
+        self.refresh_local_status()
+        self.log_ok("保存OK（catalog_config.json）")
+
+        if self.var_gh_enabled.get() and self.var_push_github_on_save.get():
+            self.push_github_variables_async()
+
+    def run_task(self, task: str):
+        # GitHub実行
+        if self.var_gh_enabled.get() and self.var_gh_run_on_github.get():
+            if task == "fetch_build":
+                self.log_info("GitHub実行では「取得→生成」は full（取得→掃除→生成）で実行します")
+                self.dispatch_async("full")
+                return
+            self.dispatch_async(task)
+            return
+        # ローカル実行
+        self.run_local(task)
+
+    def dispatch_async(self, task: str):
+        def job():
+            self.master.after(0, lambda: self.set_state("GitHub実行中..."))
+            t0 = time.time()
             try:
-                p = subprocess.Popen(
-                    cmd,
-                    cwd=str(self.root),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding=enc,
-                    errors="replace",
-                    env=env,
-                )
-                assert p.stdout is not None
+                gh = self._get_gh()
+                self.master.after(0, lambda: self.log_info(f"GitHub実行 発火: task={task}"))
+                gh.dispatch(task)
+                dt = time.time() - t0
+                self.master.after(0, lambda: self.log_ok(f"GitHub実行 発火OK (task={task}, {dt:.1f}s)"))
+                self.master.after(0, lambda: self.set_state("待機中"))
+            except Exception as e:
+                self.master.after(0, lambda: self.log_err(f"GitHub実行エラー: {e}"))
+                self.master.after(0, lambda: self.set_state("エラー"))
 
-                for line in p.stdout:
-                    self.log(self._mask_secrets_line(line.rstrip("\n")))
+        threading.Thread(target=job, daemon=True).start()
 
-                rc = p.wait()
+    def run_local(self, task: str):
+        root = self.root
+        py = sys.executable
+        cmds = {
+            "fetch": [py, "src/fetch_to_works_fanza.py"],
+            "sanitize": [py, "src/sanitize_noimage_samples.py", "--learn"],
+            "build": [py, "src/build.py"],
+        }
+        if task not in ("fetch", "sanitize", "build", "full", "fetch_build"):
+            self.log_err(f"unknown task: {task}")
+            return
 
-                if rc == 0:
-                    self.log(f"✔ {title} 完了しました")
+        def job():
+            self.master.after(0, lambda: self.set_state("ローカル実行中..."))
+            t0 = time.time()
+            fetch_env = {
+                "CATALOG_ADD_NEW_WORKS": "true" if self.var_add_new.get() else "false",
+                "CATALOG_TRIM_ENABLE": "true" if self.var_trim_en.get() else "false",
+                "CATALOG_TRIM_TO": str(int(self.var_trim_to.get())),
+            }
+            try:
+                if task == "full":
+                    self.master.after(0, lambda: self.log_info("ローカル: 取得→掃除→生成 開始"))
+                    self._run_subprocess(cmds["fetch"], cwd=root, extra_env=fetch_env)
+                    self._run_subprocess(cmds["sanitize"], cwd=root)
+                    self._run_subprocess(cmds["build"], cwd=root)
+                elif task == "fetch_build":
+                    self.master.after(0, lambda: self.log_info("ローカル: 取得→生成 開始"))
+                    self._run_subprocess(cmds["fetch"], cwd=root, extra_env=fetch_env)
+                    self._run_subprocess(cmds["build"], cwd=root)
                 else:
-                    self.log(f"✖ {title} エラーが発生しました (exit={rc})")
-
-            except Exception as e:
-                self.log(f"✖ {title} 実行中に例外発生: {e}")
-
-            finally:
-                self._is_running = False
-                self.reload_all(show_toast=False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-
-        enc = self._preferred_encoding()
-
-        def worker():
-            self._is_running = True
-            self.log(f"[RUN] {title} : {' '.join(cmd)}")
-            try:
-                p = subprocess.Popen(
-                    cmd,
-                    cwd=str(self.root),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding=enc,
-                    errors="replace",
-                    env=env,
-                )
-                assert p.stdout is not None
-                for line in p.stdout:
-                    self.log(self._mask_secrets_line(line.rstrip("\n")))
-                rc = p.wait()
-                self.log(f"[DONE] exit={rc}")
-            except Exception as e:
-                self.log(f"[ERR] {e}")
-            finally:
-                self._is_running = False
-                self.reload_all(show_toast=False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def run_build(self) -> None:
-        self._run_subprocess("src/build.py", "build")
-
-    def run_sanitize(self) -> None:
-        if not self.sanitize_path.exists():
-            messagebox.showerror("見つかりません", "src/sanitize_noimage_samples.py がありません")
-            return
-        # 署名の学習も兼ねて毎回 --learn（重くならないようキャッシュ前提）
-        self._run_subprocess("src/sanitize_noimage_samples.py", "sanitize (--learn)", args=["--learn"])
-
-    def run_fetch(self) -> None:
-        # 念のため、実行前に保存して反映
-        self.apply_all(quiet=True)
-        self._run_subprocess("src/fetch_to_works_fanza.py", "fetch")
-
-    def run_fetch_build(self) -> None:
-        self.apply_all(quiet=True)
-
-        def worker():
-            env, missing = self._get_effective_env()
-            if missing:
-                messagebox.showerror(
-                    "APIキーが未設定",
-                    "DMM_API_ID / DMM_AFFILIATE_ID が未設定です。\n\n"
-                    "『APIキー（ローカル）』に入力→保存するか、環境変数に設定してください。",
-                )
-                self.log(f"✖ missing env: {', '.join(missing)}")
-                return
-
-            enc = self._preferred_encoding()
-            self._is_running = True
-
-            try:
-                steps = [
-                    ("fetch", "src/fetch_to_works_fanza.py", []),
-                    ("sanitize (--learn)", "src/sanitize_noimage_samples.py", ["--learn"]),
-                    ("build", "src/build.py", []),
-                ]
-
-                for title, script, args in steps:
-                    cmd = [sys.executable, script] + list(args)
-                    self.log(f"\n▶ {title} 実行中...")
-
-                    p = subprocess.Popen(
-                        cmd,
-                        cwd=str(self.root),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        encoding=enc,
-                        errors="replace",
-                        env=env,
-                    )
-                    assert p.stdout is not None
-
-                    for line in p.stdout:
-                        self.log(self._mask_secrets_line(line.rstrip("\n")))
-
-                    rc = p.wait()
-
-                    if rc == 0:
-                        self.log(f"✔ {title} 完了しました")
+                    self.master.after(0, lambda: self.log_info(f"ローカル: {task} 開始"))
+                    if task == "fetch":
+                        self._run_subprocess(cmds[task], cwd=root, extra_env=fetch_env)
                     else:
-                        self.log(f"✖ {title} エラーが発生しました (exit={rc})")
-                        break
+                        self._run_subprocess(cmds[task], cwd=root)
 
+                dt = time.time() - t0
+                self.master.after(0, lambda: self.log_ok(f"ローカル: {task} 完了 ({dt:.1f}s)"))
+                self.master.after(0, lambda: self.set_state("待機中"))
             except Exception as e:
-                self.log(f"✖ fetch→sanitize→build エラー: {e}")
+                self.master.after(0, lambda: self.log_err(f"ローカル: {task} 失敗: {e}"))
+                self.master.after(0, lambda: self.set_state("エラー"))
 
-            finally:
-                self._is_running = False
-                self.reload_all(show_toast=False)
+        threading.Thread(target=job, daemon=True).start()
 
-        threading.Thread(target=worker, daemon=True).start()
+    def _run_subprocess(self, cmd, cwd: Path, extra_env=None):
+        # 文字化け対策：子プロセスの標準出力をUTF-8へ
+        env = os.environ.copy()
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env.setdefault("PYTHONUTF8", "1")
 
+        # DMMキー：.catalog_secrets.json から env に流し込み（未設定時のみ）
+        if not env.get("DMM_API_ID") and self.secrets.get("DMM_API_ID"):
+            env["DMM_API_ID"] = self.secrets["DMM_API_ID"]
+        if not env.get("DMM_AFFILIATE_ID") and self.secrets.get("DMM_AFFILIATE_ID"):
+            env["DMM_AFFILIATE_ID"] = self.secrets["DMM_AFFILIATE_ID"]
 
-        def worker():
-            env, missing = self._get_effective_env()
-            if missing:
-                messagebox.showerror(
-                    "APIキーが未設定",
-                    "DMM_API_ID / DMM_AFFILIATE_ID が未設定です。\n\n"
-                    "『APIキー（ローカル）』に入力→保存するか、環境変数に設定してください。",
-                )
-                self.log(f"[ERR] missing env: {', '.join(missing)}")
-                return
+        # GUIから渡された追加env（設定反映用）
+        if extra_env:
+            env.update(extra_env)
 
-            enc = self._preferred_encoding()
-            self._is_running = True
-            try:
-                steps = [
-                    ("fetch", "src/fetch_to_works_fanza.py", []),
-                    ("sanitize (--learn)", "src/sanitize_noimage_samples.py", ["--learn"]),
-                    ("build", "src/build.py", []),
-                ]
-                for title, script, args in steps:
-                    cmd = [sys.executable, script] + list(args)
-                    self.log(f"[RUN] {title} : {' '.join(cmd)}")
-                    p = subprocess.Popen(
-                        cmd,
-                        cwd=str(self.root),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        encoding=enc,
-                        errors="replace",
-                        env=env,
-                    )
-                    assert p.stdout is not None
-                    for line in p.stdout:
-                        self.log(self._mask_secrets_line(line.rstrip("\n")))
-                    rc = p.wait()
-                    self.log(f"[DONE] {title} exit={rc}")
-                    if rc != 0:
-                        break
-            except Exception as e:
-                self.log(f"[ERR] fetch→sanitize→build {e}")
-            finally:
-                self._is_running = False
-                self.reload_all(show_toast=False)
+        self.master.after(0, lambda: self.log_raw("[RUN] " + " ".join(map(str, cmd))))
 
-        threading.Thread(target=worker, daemon=True).start()
+        p = subprocess.Popen(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert p.stdout is not None
+        for line in p.stdout:
+            s = line.rstrip("\n")
+            if not s:
+                continue
+            # raw lines: keep but indent
+            self.master.after(0, lambda ss=s: self.log_raw(ss))
+        rc = p.wait()
+        if rc != 0:
+            raise RuntimeError(f"command failed rc={rc}")
 
 
-def main() -> None:
-    root = tk.Tk()
-
-    # Use a nicer default theme if available
+def main():
+    root = Tk()
     try:
-        style = ttk.Style(root)
+        style = ttk.Style()
         if "vista" in style.theme_names():
             style.theme_use("vista")
     except Exception:
         pass
-
     App(root)
     root.mainloop()
 

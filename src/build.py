@@ -8,6 +8,8 @@ import os
 import re
 import secrets
 import shutil
+import time
+import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +48,23 @@ RSS_ITEMS = 50
 # =============================
 # Helpers
 # =============================
+
+def _rmtree_onerror(func, path, exc_info):
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        pass
+
+def safe_rmtree(path: Path, retries: int = 5, wait: float = 0.2) -> None:
+    for _ in range(retries):
+        try:
+            shutil.rmtree(path, onerror=_rmtree_onerror)
+            return
+        except OSError:
+            time.sleep(wait)
+    shutil.rmtree(path, onerror=_rmtree_onerror)
+
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -287,12 +306,6 @@ def normalize_work(w: Dict[str, Any]) -> Dict[str, Any]:
         ww["api_rank"] = int(ww["api_rank"]) if ww["api_rank"] is not None else None
     except Exception:
         ww["api_rank"] = None
-
-    ww["api_review_rank"] = ww.get("api_review_rank")
-    try:
-        ww["api_review_rank"] = int(ww["api_review_rank"]) if ww["api_review_rank"] is not None else None
-    except Exception:
-        ww["api_review_rank"] = None
 
     ww["review_count"] = ww.get("review_count")
     try:
@@ -643,6 +656,8 @@ def main() -> None:
 
     sort_tabs = [
         {"id": "latest", "label": "最新順", "href": ""},
+        {"id": "new", "label": "新着", "href": "new/"},
+        {"id": "updated", "label": "更新", "href": "updated/"},
         {"id": "rank", "label": "ランキング順", "href": "rank/"},
         {"id": "reviews", "label": "レビュー順", "href": "reviews/"},
         {"id": "movies", "label": "動画あり", "href": "movies/"},
@@ -651,7 +666,7 @@ def main() -> None:
 
     # clean docs (keep assets? rebuild all)
     if OUT.exists():
-        shutil.rmtree(OUT)
+        safe_rmtree(OUT)
     ensure_dir(OUT)
     ensure_dir(ASSETS_OUT)
 
@@ -900,25 +915,18 @@ def main() -> None:
 
     render_sort_pages(key="rank", heading="ランキング", works_list=ranked)
 
-
-    # レビュー順（優先：API review順位 → 平均点→件数→新しさ）
+    # レビュー順（平均点→件数→新しさ）
     def review_sort_key(w: Dict[str, Any]):
-        rr = w.get("api_review_rank")
-        if rr is not None:
-            # sort=review の順位（小さいほど上位）
-            return (0, int(rr), -(w.get("_release_ts") or 0))
-
         avg = w.get("review_average")
         cnt = w.get("review_count")
+        # missing goes last
         if avg is None:
-            # missing goes last
-            return (2, 0.0, 0, -(w.get("_release_ts") or 0))
-        return (1, -(avg or 0.0), -(cnt or 0), -(w.get("_release_ts") or 0))
+            return (1, 0.0, 0, w.get("_release_ts") or 0)
+        return (0, -(avg or 0.0), -(cnt or 0), -(w.get("_release_ts") or 0))
 
     reviewed = list(works_sorted)
     reviewed.sort(key=review_sort_key)
     render_sort_pages(key="reviews", heading="レビュー順", works_list=reviewed)
-
 
     # サンプル動画あり（新しい順）
     w_mov = [w for w in works_sorted if w.get("_has_mov")]
@@ -928,6 +936,34 @@ def main() -> None:
     w_img = [w for w in works_sorted if w.get("_has_img")]
     w_img.sort(key=lambda w: (-(w.get("_img_count") or 0), -(w.get("_release_ts") or 0)))
     render_sort_pages(key="images", heading="サンプル画像（多い順）", works_list=w_img)
+
+    # 新着（added_at → release_date fallback）
+    def _parse_iso_ts(s: Any) -> int:
+        try:
+            if not s:
+                return 0
+            ss = str(s).strip()
+            # accept "YYYY-MM-DD 00:00:00" or ISO
+            ss = ss.replace(" 00:00:00", "")
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", ss):
+                ss = ss + "T00:00:00+09:00"
+            dt = datetime.fromisoformat(ss.replace("Z","+00:00"))
+            return int(dt.timestamp())
+        except Exception:
+            return 0
+
+    new_list = list(works_sorted)
+    for w in new_list:
+        w["_added_ts"] = _parse_iso_ts(w.get("added_at")) or (w.get("_release_ts") or 0)
+    new_list.sort(key=lambda w: -(w.get("_added_ts") or 0))
+    render_sort_pages(key="new", heading="新着", works_list=new_list)
+
+    # 更新（updated_at があるものだけ）
+    updated_list = [w for w in works_sorted if w.get("updated_at")]
+    for w in updated_list:
+        w["_updated_ts"] = _parse_iso_ts(w.get("updated_at"))
+    updated_list.sort(key=lambda w: (-(w.get("_updated_ts") or 0), -(w.get("_release_ts") or 0)))
+    render_sort_pages(key="updated", heading="更新", works_list=updated_list)
 
     # ===== Works pages =====
     for w in works_sorted:

@@ -59,5 +59,7 @@
 <script>
   // 検索用manifest（gzip+xor+base64）をHTMLに埋め込み
   window.__SEARCH_EMBED__ = "{{ search_manifest_b64 }}";
+  window.__ROOT_PATH__ = "{{ root_path }}";
 </script>
+<script src="{{ js_path }}"></script>
 {% endblock %}

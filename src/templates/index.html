@@ -35,19 +35,16 @@
     {% for w in works %}
       <a class="work-card" href="{{ root_path }}works/{{ w.id }}/" aria-label="{{ w.title }}">
         <div class="work-thumb">
-          {% if sort_id == "rank" and (w.api_rank or w._tmp_rank) %}
-            <span class="badge badge-rank work-rank">{{ w.api_rank or w._tmp_rank }}位</span>
-          {% endif %}
-          <span class="fav-btn js-fav" role="button" tabindex="0"
-                data-id="{{ w.id }}" data-title="{{ w.title|e }}" data-url="{{ root_path }}works/{{ w.id }}/"
-                {% if w.hero_image %}data-img="{{ w.hero_image }}"{% endif %}
-                aria-label="お気に入りに追加">☆</span>
           {% if w.hero_image %}
             <img loading="lazy" src="{{ w.hero_image }}" alt="{{ w.title }}">
           {% else %}
             <div class="thumb-placeholder"></div>
           {% endif %}
-          <div class="work-badges">            {% if w._has_img %}
+          {% if sort_id == "rank" and (w.api_rank or w._tmp_rank) %}
+            <span class="badge badge-rank badge-rank--pin">{{ (w.api_rank or w._tmp_rank) }}位</span>
+          {% endif %}
+          <div class="work-badges">
+{% if w._has_img %}
               <span class="badge badge-img">🖼️ サンプル画像あり</span>
             {% endif %}
             {% if w._has_mov %}

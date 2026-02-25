@@ -38,7 +38,6 @@
   </header>
 
   <main class="site-main">
-    <div class="container personal-sections" id="personalSections" hidden></div>
     {% block content %}{% endblock %}
   </main>
 
@@ -50,6 +49,6 @@
       {% endif %}
     </div>
   </footer>
-  <script defer src="{{ root_path }}assets/site.js"></script>
+  <script src="{{ root_path }}assets/site.js" defer></script>
 </body>
 </html>
