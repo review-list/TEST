@@ -6,9 +6,7 @@ on:
     paths:
       - 'src/build.py'
       - 'src/templates/**'
-      - 'src/data/works_manifest.json'
-      - 'src/data/works_chunks/**'
-
+      - 'src/assets/**'
 jobs:
   build:
     runs-on: ubuntu-latest

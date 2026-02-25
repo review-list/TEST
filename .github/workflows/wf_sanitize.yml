@@ -1,0 +1,85 @@
+name: 🧹No image掃除（sanitize）
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "task (for UI)"
+        required: false
+        default: "sanitize"
+      sanitize_learn:
+        description: "Sanitize --learn (override)"
+        required: false
+        default: "auto"
+        type: choice
+        options: [auto, true, false]
+
+
+permissions:
+  contents: write
+
+jobs:
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Resolve sanitize setting (inputs > repo variables > defaults)
+        shell: bash
+        run: |
+          set -euo pipefail
+          v='${{ inputs.sanitize_learn }}'
+          if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_SANITIZE_LEARN }}'; fi
+          if [ -z "$v" ]; then v='true'; fi
+          SANITIZE_LEARN="$v"
+          echo "CATALOG_SANITIZE_LEARN=$SANITIZE_LEARN" >> "$GITHUB_ENV"
+          echo "Resolved: CATALOG_SANITIZE_LEARN=$SANITIZE_LEARN"
+      - name: Sanitize noimage samples
+        run: |
+          if [ "${CATALOG_SANITIZE_LEARN}" = 'true' ]; then
+            python src/sanitize_noimage_samples.py --learn
+          else
+            python src/sanitize_noimage_samples.py
+          fi
+      - name: Git commit & push (data only, if changed)
+        run: |
+          if git status --porcelain | grep .; then
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git add src/data
+            git diff --cached --quiet || git commit -m "manual: ${GITHUB_WORKFLOW}"
+            git push
+          else
+            echo "No changes"
+          fi
+      - name: Summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          mf = Path('src/data/works_manifest.json')
+          lines = []
+          if mf.exists():
+              j = json.loads(mf.read_text(encoding='utf-8'))
+              lines = [
+                  f"count: {j.get('count', 0)}",
+                  f"with_sample_images: {j.get('with_sample_images', 0)}",
+                  f"with_sample_movies: {j.get('with_sample_movies', 0)}",
+                  f"updated_at: {j.get('updated_at', '')}",
+              ]
+          out = '\n'.join('- ' + x for x in lines) if lines else '- manifest not found'
+          sp = os.environ.get('GITHUB_STEP_SUMMARY')
+          if sp:
+              Path(sp).write_text('## Catalog status\n' + out + '\n', encoding='utf-8')
+          PY

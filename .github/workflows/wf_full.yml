@@ -1,18 +1,12 @@
-name: 🔄自動更新（API取得→ビルド→コミット）
+name: 🚀取得→掃除→生成（API取得→掃除→ビルド）
 
 on:
   workflow_dispatch:
     inputs:
       task:
-        description: "What to run"
+        description: "task (for UI)"
         required: false
         default: "full"
-        type: choice
-        options:
-          - full
-          - fetch
-          - sanitize
-          - build
       add_new_works:
         description: "Add new works (override)"
         required: false
@@ -36,16 +30,13 @@ on:
         type: choice
         options: [auto, true, false]
 
-  schedule:
-    - cron: '0 15 * * *'  # JST 00:00
 
 permissions:
   contents: write
 
 jobs:
-  update:
+  full:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,53 +45,48 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
       - name: Resolve settings (inputs > repo variables > defaults)
         shell: bash
         run: |
           set -euo pipefail
-
-          TASK='${{ inputs.task }}'
-          if [ -z "$TASK" ]; then TASK='full'; fi
-          echo "TASK=$TASK" >> "$GITHUB_ENV"
 
           # add_new_works
           v='${{ inputs.add_new_works }}'
           if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_ADD_NEW_WORKS }}'; fi
           if [ -z "$v" ]; then v='true'; fi
           ADD_NEW_WORKS="$v"
-          echo "ADD_NEW_WORKS=$ADD_NEW_WORKS" >> "$GITHUB_ENV"
           echo "CATALOG_ADD_NEW_WORKS=$ADD_NEW_WORKS" >> "$GITHUB_ENV"
+
           # trim_enable
           v='${{ inputs.trim_enable }}'
           if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_TRIM_ENABLE }}'; fi
           if [ -z "$v" ]; then v='false'; fi
           TRIM_ENABLE="$v"
-          echo "TRIM_ENABLE=$TRIM_ENABLE" >> "$GITHUB_ENV"
           echo "CATALOG_TRIM_ENABLE=$TRIM_ENABLE" >> "$GITHUB_ENV"
+
           # trim_to
           v='${{ inputs.trim_to }}'
           if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_TRIM_TO }}'; fi
           if [ -z "$v" ]; then v='0'; fi
           TRIM_TO="$v"
-          echo "TRIM_TO=$TRIM_TO" >> "$GITHUB_ENV"
           echo "CATALOG_TRIM_TO=$TRIM_TO" >> "$GITHUB_ENV"
-          # sanitize_learn
+
+          echo "Resolved: CATALOG_ADD_NEW_WORKS=$ADD_NEW_WORKS CATALOG_TRIM_ENABLE=$TRIM_ENABLE CATALOG_TRIM_TO=$TRIM_TO"
+      - name: Resolve sanitize setting (inputs > repo variables > defaults)
+        shell: bash
+        run: |
+          set -euo pipefail
           v='${{ inputs.sanitize_learn }}'
           if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_SANITIZE_LEARN }}'; fi
           if [ -z "$v" ]; then v='true'; fi
           SANITIZE_LEARN="$v"
-          echo "SANITIZE_LEARN=$SANITIZE_LEARN" >> "$GITHUB_ENV"
           echo "CATALOG_SANITIZE_LEARN=$SANITIZE_LEARN" >> "$GITHUB_ENV"
-          echo "Resolved: TASK=$TASK ADD_NEW_WORKS=$ADD_NEW_WORKS TRIM_ENABLE=$TRIM_ENABLE TRIM_TO=$TRIM_TO SANITIZE_LEARN=$SANITIZE_LEARN"
-
+          echo "Resolved: CATALOG_SANITIZE_LEARN=$SANITIZE_LEARN"
       - name: Fetch works
-        if: env.TASK == 'full' || env.TASK == 'fetch'
         env:
           DMM_API_ID: ${{ secrets.DMM_API_ID }}
           DMM_AFFILIATE_ID: ${{ secrets.DMM_AFFILIATE_ID }}
@@ -108,31 +94,27 @@ jobs:
           python src/fetch_to_works_fanza.py
 
       - name: Sanitize noimage samples
-        if: env.TASK == 'full' || env.TASK == 'sanitize'
         run: |
-          if [ "${SANITIZE_LEARN}" = 'true' ]; then
+          if [ "${CATALOG_SANITIZE_LEARN}" = 'true' ]; then
             python src/sanitize_noimage_samples.py --learn
           else
             python src/sanitize_noimage_samples.py
           fi
 
       - name: Build docs
-        if: env.TASK == 'full' || env.TASK == 'build'
         run: |
           python src/build.py
-
       - name: Git commit & push (if changed)
         run: |
           if git status --porcelain | grep .; then
             git config user.name "github-actions"
             git config user.email "github-actions@github.com"
             git add -A
-            git commit -m "Auto update catalog"
+            git commit -m "manual: ${GITHUB_WORKFLOW}"
             git push
           else
             echo "No changes"
           fi
-
       - name: Summary
         run: |
           python - <<'PY'
@@ -141,9 +123,8 @@ jobs:
           from pathlib import Path
 
           mf = Path('src/data/works_manifest.json')
-          if not mf.exists():
-              print('no manifest')
-          else:
+          lines = []
+          if mf.exists():
               j = json.loads(mf.read_text(encoding='utf-8'))
               lines = [
                   f"count: {j.get('count', 0)}",
@@ -151,8 +132,8 @@ jobs:
                   f"with_sample_movies: {j.get('with_sample_movies', 0)}",
                   f"updated_at: {j.get('updated_at', '')}",
               ]
-              out = '\n'.join('- ' + x for x in lines)
-              sp = os.environ.get('GITHUB_STEP_SUMMARY')
-              if sp:
-                  Path(sp).write_text('## Catalog status\n' + out + '\n', encoding='utf-8')
+          out = '\n'.join('- ' + x for x in lines) if lines else '- manifest not found'
+          sp = os.environ.get('GITHUB_STEP_SUMMARY')
+          if sp:
+              Path(sp).write_text('## Catalog status\n' + out + '\n', encoding='utf-8')
           PY

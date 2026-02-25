@@ -1,0 +1,65 @@
+name: 🔧生成のみ（ビルド）
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "task (for UI)"
+        required: false
+        default: "build"
+
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Build site -> docs/
+        run: |
+          python src/build.py
+      - name: Git commit & push (docs only, if changed)
+        run: |
+          if git status --porcelain | grep .; then
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git add docs
+            git diff --cached --quiet || git commit -m "manual: ${GITHUB_WORKFLOW}"
+            git push
+          else
+            echo "No changes"
+          fi
+      - name: Summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          mf = Path('src/data/works_manifest.json')
+          lines = []
+          if mf.exists():
+              j = json.loads(mf.read_text(encoding='utf-8'))
+              lines = [
+                  f"count: {j.get('count', 0)}",
+                  f"with_sample_images: {j.get('with_sample_images', 0)}",
+                  f"with_sample_movies: {j.get('with_sample_movies', 0)}",
+                  f"updated_at: {j.get('updated_at', '')}",
+              ]
+          out = '\n'.join('- ' + x for x in lines) if lines else '- manifest not found'
+          sp = os.environ.get('GITHUB_STEP_SUMMARY')
+          if sp:
+              Path(sp).write_text('## Catalog status\n' + out + '\n', encoding='utf-8')
+          PY
