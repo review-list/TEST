@@ -19,13 +19,6 @@
     {% endif %}
 
     <h1 class="page-title work-title--detail">{{ w.title }}</h1>
-<div class="detail-actions">
-  <button class="btn btn-ghost fav-detail js-fav" type="button"
-          data-id="{{ w.id }}" data-title="{{ w.title|e }}" data-url="{{ root_path }}works/{{ w.id }}/"
-          {% if w.hero_image %}data-img="{{ w.hero_image }}"{% endif %}
-          aria-label="お気に入りに追加">☆ お気に入り</button>
-</div>
-
     <div class="badges-row">
       {% if w._has_img %}
         <span class="badge badge-img">🖼️ サンプル画像あり{% if w._img_count %}（{{ w._img_count }}枚）{% endif %}</span>

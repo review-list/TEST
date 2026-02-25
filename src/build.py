@@ -653,6 +653,7 @@ def main() -> None:
     tpl_page = env.get_template("page.html")
     tpl_search = env.get_template("search.html")
     tpl_featured = env.get_template("featured.html")
+    tpl_shorts = env.get_template("shorts.html")
 
     sort_tabs = [
         {"id": "latest", "label": "最新順", "href": ""},
@@ -661,6 +662,7 @@ def main() -> None:
         {"id": "rank", "label": "ランキング順", "href": "rank/"},
         {"id": "reviews", "label": "レビュー順", "href": "reviews/"},
         {"id": "movies", "label": "動画あり", "href": "movies/"},
+        {"id": "shorts", "label": "ショート", "href": "shorts/"},
         {"id": "images", "label": "画像多い", "href": "images/"},
     ]
 
@@ -806,11 +808,35 @@ def main() -> None:
             featured_links=[
                 {"href": f"{root_path}rank/", "title": "ランキング（API rank）"},
                 {"href": f"{root_path}movies/", "title": "サンプル動画あり"},
+                {"href": f"{root_path}shorts/", "title": "ショート（縦スクロール）"},
                 {"href": f"{root_path}images/", "title": "サンプル画像あり"},
             ],
         )
         write_text(OUT / "featured" / "index.html", html)
         sitemap_urls.append(path_from_root)
+
+    def render_shorts(works_list: List[Dict[str, Any]]) -> None:
+        """ショート動画風の縦スクロール（サンプル動画のみ）"""
+        path_from_root = "shorts/"
+        depth = page_depth(path_from_root)
+        root_path = "../" * depth
+        css_path = rel(depth, "assets/style.css")
+        html = tpl_shorts.render(
+            site_name=site_name,
+            base_url=base_url,
+            canonical_url=(base_url + path_from_root) if base_url else "",
+            page_title="ショート",
+            heading="ショート",
+            css_path=css_path,
+            root_path=root_path,
+            nav_active="shorts",
+            sort_tabs=sort_tabs,
+            sort_id="shorts",
+            works=works_list,
+        )
+        write_text(OUT / "shorts" / "index.html", html)
+        sitemap_urls.append(path_from_root)
+
 
     # ===== Latest listing (Home) =====
     total_pages = max(1, math.ceil(len(works_sorted) / PER_PAGE))
@@ -930,6 +956,8 @@ def main() -> None:
 
     # サンプル動画あり（新しい順）
     w_mov = [w for w in works_sorted if w.get("_has_mov")]
+    render_shorts(w_mov)
+
     render_sort_pages(key="movies", heading="サンプル動画あり", works_list=w_mov)
 
     # 画像多い（枚数→新しい順）

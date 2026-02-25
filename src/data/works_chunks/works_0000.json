@@ -25,7 +25,6 @@
     "label": "KMPVR",
     "price_min": 998,
     "added_at": "2026-04-03T00:00:00+09:00",
-    "updated_at": "2026-02-25T17:11:52+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/vrkm01782/vrkm01782-1.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01782/vrkm01782-2.jpg",
@@ -69,7 +68,8 @@
       "https://pics.dmm.co.jp/digital/video/vrkm01782/vrkm01782jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01782/vrkm01782jp-19.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01782/vrkm01782jp-20.jpg"
-    ]
+    ],
+    "updated_at": "2026-02-25T14:17:28+09:00"
   },
   {
     "id": "urvrsp00540",
@@ -152,7 +152,6 @@
     "label": "KMPVR",
     "price_min": 998,
     "added_at": "2026-03-26T00:00:00+09:00",
-    "updated_at": "2026-02-25T17:11:52+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/vrkm01781/vrkm01781-1.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01781/vrkm01781-2.jpg",
@@ -196,7 +195,8 @@
       "https://pics.dmm.co.jp/digital/video/vrkm01781/vrkm01781jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01781/vrkm01781jp-19.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01781/vrkm01781jp-20.jpg"
-    ]
+    ],
+    "updated_at": "2026-02-25T14:17:28+09:00"
   },
   {
     "id": "savr00987",
@@ -289,7 +289,6 @@
     "label": "KMPVR",
     "price_min": 998,
     "added_at": "2026-03-20T00:00:00+09:00",
-    "updated_at": "2026-02-25T17:11:55+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/vrkm01760/vrkm01760-1.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01760/vrkm01760-2.jpg",
@@ -327,7 +326,8 @@
       "https://pics.dmm.co.jp/digital/video/vrkm01760/vrkm01760jp-15.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01760/vrkm01760jp-16.jpg",
       "https://pics.dmm.co.jp/digital/video/vrkm01760/vrkm01760jp-17.jpg"
-    ]
+    ],
+    "updated_at": "2026-02-25T14:17:29+09:00"
   },
   {
     "id": "savr00973",
@@ -1697,18 +1697,6 @@
     "label": "ピーターズ",
     "price_min": 500,
     "added_at": "2026-03-15T00:00:00+09:00",
-    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=720_480/affi_id=risutotube-990/",
-    "sample_movie_urls": {
-      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=476_306/affi_id=risutotube-990/",
-      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=560_360/affi_id=risutotube-990/",
-      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=644_414/affi_id=risutotube-990/",
-      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=720_480/affi_id=risutotube-990/"
-    },
-    "sample_movie_size": {
-      "w": 720,
-      "h": 480
-    },
-    "updated_at": "2026-02-25T17:12:02+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/h_021pts00540/h_021pts00540-1.jpg",
       "https://pics.dmm.co.jp/digital/video/h_021pts00540/h_021pts00540-2.jpg",
@@ -1752,7 +1740,19 @@
       "https://pics.dmm.co.jp/digital/video/h_021pts00540/h_021pts00540jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/h_021pts00540/h_021pts00540jp-19.jpg",
       "https://pics.dmm.co.jp/digital/video/h_021pts00540/h_021pts00540jp-20.jpg"
-    ]
+    ],
+    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=720_480/affi_id=risutotube-990/",
+    "sample_movie_urls": {
+      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=476_306/affi_id=risutotube-990/",
+      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=560_360/affi_id=risutotube-990/",
+      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=644_414/affi_id=risutotube-990/",
+      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=h_021pts540/size=720_480/affi_id=risutotube-990/"
+    },
+    "sample_movie_size": {
+      "w": 720,
+      "h": 480
+    },
+    "updated_at": "2026-02-25T14:17:31+09:00"
   },
   {
     "id": "1sun00042a",
@@ -2699,18 +2699,6 @@
     "label": "姦乱者",
     "price_min": 1980,
     "added_at": "2026-03-14T00:00:00+09:00",
-    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=720_480/affi_id=risutotube-990/",
-    "sample_movie_urls": {
-      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=476_306/affi_id=risutotube-990/",
-      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=560_360/affi_id=risutotube-990/",
-      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=644_414/affi_id=risutotube-990/",
-      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=720_480/affi_id=risutotube-990/"
-    },
-    "sample_movie_size": {
-      "w": 720,
-      "h": 480
-    },
-    "updated_at": "2026-02-25T17:12:02+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/suji00303/suji00303-1.jpg",
       "https://pics.dmm.co.jp/digital/video/suji00303/suji00303-2.jpg",
@@ -2752,7 +2740,19 @@
       "https://pics.dmm.co.jp/digital/video/suji00303/suji00303jp-17.jpg",
       "https://pics.dmm.co.jp/digital/video/suji00303/suji00303jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/suji00303/suji00303jp-19.jpg"
-    ]
+    ],
+    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=720_480/affi_id=risutotube-990/",
+    "sample_movie_urls": {
+      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=476_306/affi_id=risutotube-990/",
+      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=560_360/affi_id=risutotube-990/",
+      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=644_414/affi_id=risutotube-990/",
+      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=suji00303/size=720_480/affi_id=risutotube-990/"
+    },
+    "sample_movie_size": {
+      "w": 720,
+      "h": 480
+    },
+    "updated_at": "2026-02-25T14:17:31+09:00"
   },
   {
     "id": "suji00302",
@@ -3393,7 +3393,6 @@
     "label": "KMPVR-彩-",
     "price_min": 998,
     "added_at": "2026-03-14T00:00:00+09:00",
-    "updated_at": "2026-02-25T17:12:02+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/savr00997/savr00997-1.jpg",
       "https://pics.dmm.co.jp/digital/video/savr00997/savr00997-2.jpg",
@@ -3431,7 +3430,8 @@
       "https://pics.dmm.co.jp/digital/video/savr00997/savr00997jp-15.jpg",
       "https://pics.dmm.co.jp/digital/video/savr00997/savr00997jp-16.jpg",
       "https://pics.dmm.co.jp/digital/video/savr00997/savr00997jp-17.jpg"
-    ]
+    ],
+    "updated_at": "2026-02-25T14:17:31+09:00"
   },
   {
     "id": "prmj00357",
@@ -3947,18 +3947,6 @@
     "label": "----",
     "price_min": 1980,
     "added_at": "2026-03-14T00:00:00+09:00",
-    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=720_480/affi_id=risutotube-990/",
-    "sample_movie_urls": {
-      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=476_306/affi_id=risutotube-990/",
-      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=560_360/affi_id=risutotube-990/",
-      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=644_414/affi_id=risutotube-990/",
-      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=720_480/affi_id=risutotube-990/"
-    },
-    "sample_movie_size": {
-      "w": 720,
-      "h": 480
-    },
-    "updated_at": "2026-02-25T17:12:02+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/myba00092/myba00092-1.jpg",
       "https://pics.dmm.co.jp/digital/video/myba00092/myba00092-2.jpg",
@@ -4002,7 +3990,19 @@
       "https://pics.dmm.co.jp/digital/video/myba00092/myba00092jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/myba00092/myba00092jp-19.jpg",
       "https://pics.dmm.co.jp/digital/video/myba00092/myba00092jp-20.jpg"
-    ]
+    ],
+    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=720_480/affi_id=risutotube-990/",
+    "sample_movie_urls": {
+      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=476_306/affi_id=risutotube-990/",
+      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=560_360/affi_id=risutotube-990/",
+      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=644_414/affi_id=risutotube-990/",
+      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=myba00092/size=720_480/affi_id=risutotube-990/"
+    },
+    "sample_movie_size": {
+      "w": 720,
+      "h": 480
+    },
+    "updated_at": "2026-02-25T14:17:31+09:00"
   },
   {
     "id": "mvg00156",
@@ -4216,7 +4216,6 @@
     "label": "MCP",
     "price_min": 2480,
     "added_at": "2026-03-14T00:00:00+09:00",
-    "updated_at": "2026-02-25T17:12:02+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/mmus00107/mmus00107-1.jpg",
       "https://pics.dmm.co.jp/digital/video/mmus00107/mmus00107-2.jpg",
@@ -4260,7 +4259,8 @@
       "https://pics.dmm.co.jp/digital/video/mmus00107/mmus00107jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/mmus00107/mmus00107jp-19.jpg",
       "https://pics.dmm.co.jp/digital/video/mmus00107/mmus00107jp-20.jpg"
-    ]
+    ],
+    "updated_at": "2026-02-25T14:17:31+09:00"
   },
   {
     "id": "mkon00129",
@@ -5274,18 +5274,6 @@
     "label": "FAプロ",
     "price_min": 2500,
     "added_at": "2026-03-14T00:00:00+09:00",
-    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=720_480/affi_id=risutotube-990/",
-    "sample_movie_urls": {
-      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=476_306/affi_id=risutotube-990/",
-      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=560_360/affi_id=risutotube-990/",
-      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=644_414/affi_id=risutotube-990/",
-      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=720_480/affi_id=risutotube-990/"
-    },
-    "sample_movie_size": {
-      "w": 720,
-      "h": 480
-    },
-    "updated_at": "2026-02-25T17:12:02+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/hoks00219/hoks00219-1.jpg",
       "https://pics.dmm.co.jp/digital/video/hoks00219/hoks00219-2.jpg",
@@ -5329,7 +5317,19 @@
       "https://pics.dmm.co.jp/digital/video/hoks00219/hoks00219jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/hoks00219/hoks00219jp-19.jpg",
       "https://pics.dmm.co.jp/digital/video/hoks00219/hoks00219jp-20.jpg"
-    ]
+    ],
+    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=720_480/affi_id=risutotube-990/",
+    "sample_movie_urls": {
+      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=476_306/affi_id=risutotube-990/",
+      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=560_360/affi_id=risutotube-990/",
+      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=644_414/affi_id=risutotube-990/",
+      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=hoks219/size=720_480/affi_id=risutotube-990/"
+    },
+    "sample_movie_size": {
+      "w": 720,
+      "h": 480
+    },
+    "updated_at": "2026-02-25T14:17:31+09:00"
   },
   {
     "id": "hoks00218",
@@ -6710,18 +6710,6 @@
     "label": "----",
     "price_min": 2180,
     "added_at": "2026-03-14T00:00:00+09:00",
-    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=720_480/affi_id=risutotube-990/",
-    "sample_movie_urls": {
-      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=476_306/affi_id=risutotube-990/",
-      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=560_360/affi_id=risutotube-990/",
-      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=644_414/affi_id=risutotube-990/",
-      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=720_480/affi_id=risutotube-990/"
-    },
-    "sample_movie_size": {
-      "w": 720,
-      "h": 480
-    },
-    "updated_at": "2026-02-25T17:12:06+09:00",
     "sample_images_small": [
       "https://pics.dmm.co.jp/digital/video/aukg00647/aukg00647-1.jpg",
       "https://pics.dmm.co.jp/digital/video/aukg00647/aukg00647-2.jpg",
@@ -6765,6 +6753,18 @@
       "https://pics.dmm.co.jp/digital/video/aukg00647/aukg00647jp-18.jpg",
       "https://pics.dmm.co.jp/digital/video/aukg00647/aukg00647jp-19.jpg",
       "https://pics.dmm.co.jp/digital/video/aukg00647/aukg00647jp-20.jpg"
-    ]
+    ],
+    "sample_movie": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=720_480/affi_id=risutotube-990/",
+    "sample_movie_urls": {
+      "size_476_306": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=476_306/affi_id=risutotube-990/",
+      "size_560_360": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=560_360/affi_id=risutotube-990/",
+      "size_644_414": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=644_414/affi_id=risutotube-990/",
+      "size_720_480": "https://www.dmm.co.jp/litevideo/-/part/=/cid=aukg00647/size=720_480/affi_id=risutotube-990/"
+    },
+    "sample_movie_size": {
+      "w": 720,
+      "h": 480
+    },
+    "updated_at": "2026-02-25T14:17:32+09:00"
   }
 ]
