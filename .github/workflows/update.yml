@@ -1,4 +1,4 @@
-name: Update catalog (fetch/sanitize/build)
+name: 🔄自動更新（API取得→ビルド→コミット）
 
 on:
   workflow_dispatch:
@@ -11,6 +11,7 @@ on:
         options:
           - full
           - fetch
+          - fetch_build
           - sanitize
           - build
       add_new_works:
@@ -100,7 +101,7 @@ jobs:
           echo "Resolved: TASK=$TASK ADD_NEW_WORKS=$ADD_NEW_WORKS TRIM_ENABLE=$TRIM_ENABLE TRIM_TO=$TRIM_TO SANITIZE_LEARN=$SANITIZE_LEARN"
 
       - name: Fetch works
-        if: env.TASK == 'full' || env.TASK == 'fetch'
+        if: env.TASK == 'full' || env.TASK == 'fetch' || env.TASK == 'fetch_build'
         env:
           DMM_API_ID: ${{ secrets.DMM_API_ID }}
           DMM_AFFILIATE_ID: ${{ secrets.DMM_AFFILIATE_ID }}
@@ -117,7 +118,7 @@ jobs:
           fi
 
       - name: Build docs
-        if: env.TASK == 'full' || env.TASK == 'build'
+        if: env.TASK == 'full' || env.TASK == 'build' || env.TASK == 'fetch_build'
         run: |
           python src/build.py
 
