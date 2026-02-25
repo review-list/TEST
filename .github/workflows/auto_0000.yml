@@ -1,0 +1,16 @@
+name: ⏰00:00 自動更新トリガー
+
+on:
+  schedule:
+    - cron: '0 15 * * *'  # JST 00:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    uses: ./.github/workflows/update.yml
+    secrets: inherit
+    with:
+      task: full

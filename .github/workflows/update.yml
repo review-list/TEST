@@ -13,6 +13,7 @@ on:
           - fetch
           - sanitize
           - build
+          - fetch_build
       add_new_works:
         description: "Add new works (override)"
         required: false
@@ -36,8 +37,28 @@ on:
         type: choice
         options: [auto, true, false]
 
-  schedule:
-    - cron: '0 15 * * *'  # JST 00:00
+  workflow_call:
+    inputs:
+      task:
+        required: false
+        type: string
+        default: "full"
+      add_new_works:
+        required: false
+        type: string
+        default: "auto"
+      trim_enable:
+        required: false
+        type: string
+        default: "auto"
+      trim_to:
+        required: false
+        type: string
+        default: "auto"
+      sanitize_learn:
+        required: false
+        type: string
+        default: "auto"
 
 permissions:
   contents: write
@@ -76,6 +97,7 @@ jobs:
           ADD_NEW_WORKS="$v"
           echo "ADD_NEW_WORKS=$ADD_NEW_WORKS" >> "$GITHUB_ENV"
           echo "CATALOG_ADD_NEW_WORKS=$ADD_NEW_WORKS" >> "$GITHUB_ENV"
+
           # trim_enable
           v='${{ inputs.trim_enable }}'
           if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_TRIM_ENABLE }}'; fi
@@ -83,6 +105,7 @@ jobs:
           TRIM_ENABLE="$v"
           echo "TRIM_ENABLE=$TRIM_ENABLE" >> "$GITHUB_ENV"
           echo "CATALOG_TRIM_ENABLE=$TRIM_ENABLE" >> "$GITHUB_ENV"
+
           # trim_to
           v='${{ inputs.trim_to }}'
           if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_TRIM_TO }}'; fi
@@ -90,6 +113,7 @@ jobs:
           TRIM_TO="$v"
           echo "TRIM_TO=$TRIM_TO" >> "$GITHUB_ENV"
           echo "CATALOG_TRIM_TO=$TRIM_TO" >> "$GITHUB_ENV"
+
           # sanitize_learn
           v='${{ inputs.sanitize_learn }}'
           if [ -z "$v" ] || [ "$v" = 'auto' ]; then v='${{ vars.CATALOG_SANITIZE_LEARN }}'; fi
@@ -97,10 +121,11 @@ jobs:
           SANITIZE_LEARN="$v"
           echo "SANITIZE_LEARN=$SANITIZE_LEARN" >> "$GITHUB_ENV"
           echo "CATALOG_SANITIZE_LEARN=$SANITIZE_LEARN" >> "$GITHUB_ENV"
+
           echo "Resolved: TASK=$TASK ADD_NEW_WORKS=$ADD_NEW_WORKS TRIM_ENABLE=$TRIM_ENABLE TRIM_TO=$TRIM_TO SANITIZE_LEARN=$SANITIZE_LEARN"
 
       - name: Fetch works
-        if: env.TASK == 'full' || env.TASK == 'fetch'
+        if: env.TASK == 'full' || env.TASK == 'fetch' || env.TASK == 'fetch_build'
         env:
           DMM_API_ID: ${{ secrets.DMM_API_ID }}
           DMM_AFFILIATE_ID: ${{ secrets.DMM_AFFILIATE_ID }}
@@ -117,7 +142,7 @@ jobs:
           fi
 
       - name: Build docs
-        if: env.TASK == 'full' || env.TASK == 'build'
+        if: env.TASK == 'full' || env.TASK == 'build' || env.TASK == 'fetch_build'
         run: |
           python src/build.py
 
