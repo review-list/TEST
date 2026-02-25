@@ -6,7 +6,8 @@ on:
     paths:
       - 'src/build.py'
       - 'src/templates/**'
-      - 'src/data/works.json'
+      - 'src/data/works_manifest.json'
+      - 'src/data/works_chunks/**'
 
 jobs:
   build:
