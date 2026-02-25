@@ -166,7 +166,84 @@
     mo.observe(host, { childList: true, subtree: true });
   };
 
-  // ----- MyBar -----
+  
+  // ----- Shorts feed (vertical snap) -----
+  const initShortsFeed = () => {
+    const feed = document.getElementById("shortsFeed");
+    if (!feed) return;
+
+    const items = Array.from(feed.querySelectorAll(".short-item"));
+    if (!items.length) return;
+
+    const ensureSrc = (video) => {
+      if (!video) return;
+      if (video.getAttribute("src")) return;
+      const src = video.getAttribute("data-src");
+      if (src) video.setAttribute("src", src);
+    };
+
+    const activate = (item) => {
+      items.forEach((it) => {
+        const v = it.querySelector("video");
+        if (!v) return;
+        if (it === item) return;
+        try { v.pause(); } catch {}
+      });
+
+      const v = item.querySelector("video");
+      if (!v) return;
+
+      ensureSrc(v);
+      v.muted = true; // autoplay requires muted
+      const p = v.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    };
+
+    // tap to toggle play/pause (except clicking links/buttons)
+    feed.addEventListener("click", (ev) => {
+      const t = ev.target;
+      if (t && t.closest && t.closest("a,button")) return;
+
+      const item = t && t.closest ? t.closest(".short-item") : null;
+      if (!item) return;
+      const v = item.querySelector("video");
+      if (!v) return;
+
+      ensureSrc(v);
+      if (v.paused) {
+        v.muted = true;
+        const p = v.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } else {
+        try { v.pause(); } catch {}
+      }
+    });
+
+    // when video ended, go next
+    items.forEach((it, i) => {
+      const v = it.querySelector("video");
+      if (!v) return;
+      v.addEventListener("ended", () => {
+        const next = items[i + 1];
+        if (next) next.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting && e.intersectionRatio >= 0.6) {
+          activate(e.target);
+        }
+      });
+    }, { threshold: [0.0, 0.6, 1.0] });
+
+    items.forEach((it) => io.observe(it));
+
+    // initial: activate first item
+    activate(items[0]);
+  };
+
+// ----- MyBar -----
   const mybar = document.createElement("div");
   mybar.className = "mybar";
   mybar.innerHTML = `
@@ -202,6 +279,8 @@
     attachAllCards();
     observeDynamicCards();
     attachFavButtonToDetail();
+
+    initShortsFeed();
 
     mybar.querySelectorAll("button[data-tab]").forEach(btn => {
       btn.addEventListener("click", () => openDrawer(btn.getAttribute("data-tab")));

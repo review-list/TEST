@@ -1,0 +1,41 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="shorts-page">
+  <div class="shorts-head container">
+    <div class="page-head">
+      <h1 class="page-title">{{ heading }}</h1>
+      <p class="muted">スクロールで次の動画へ（サンプル動画のみ）</p>
+
+      {% if sort_tabs %}
+        <div class="sort-tabs" role="navigation" aria-label="並び替え">
+          {% for t in sort_tabs %}
+            <a class="sort-tab{% if sort_id == t.id %} is-active{% endif %}" href="{{ root_path }}{{ t.href }}">{{ t.label }}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="shorts-feed" id="shortsFeed" aria-label="ショート動画フィード">
+    {% for w in works %}
+      {% if w.sample_movie %}
+        {% set buy_url = w.official_url or (root_path ~ "works/" ~ w.id ~ "/") %}
+        <article class="short-item" data-id="{{ w.id }}">
+          <div class="short-media">
+            <video class="short-video" data-src="{{ w.sample_movie | e }}" playsinline muted loop preload="none"></video>
+            <div class="short-tap-hint">タップで再生/停止</div>
+          </div>
+
+          <div class="short-overlay">
+            <div class="short-title">{{ w.title }}</div>
+            <div class="short-actions">
+              <a class="btn btn-primary btn-buy" href="{{ buy_url }}" target="_blank" rel="noopener">今すぐ買う</a>
+              <a class="btn btn-ghost" href="{{ root_path }}works/{{ w.id }}/">詳細</a>
+            </div>
+          </div>
+        </article>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
