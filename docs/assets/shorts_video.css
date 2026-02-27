@@ -1,0 +1,277 @@
+/* shorts_video.css (v1.4.1)
+ * Fix:
+ * - 画面下に残る“黒い帯/余白”を消す（shortsFeedが画面高になっていない問題）
+ *   → position:fixed + height:100dvh + bottom:auto で強制的にフルハイト化
+ *   ※既存の左メニュー/cover/拡大モーダル仕様は維持
+ */
+
+:root{
+  --sv-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --sv-safe-top: env(safe-area-inset-top, 0px);
+  --sv-max-w: 560px;
+  --sv-nav-w: 220px;
+}
+
+/* ---- Detail embed (keep) ---- */
+.work-media-sections .video-embed{ aspect-ratio: 16 / 9 !important; }
+.sv-hidden{ display:none !important; }
+.video-embed{ position: relative; }
+.video-embed .sv-detail-video{
+  position:absolute; inset:0; width:100%; height:100%;
+  background:#000; object-fit: contain;
+}
+
+/* ---- Shorts: remove old hint badge ---- */
+.shorts-page .short-tap-hint{ display:none !important; }
+
+/* ---- Force hide header/footer/mybar on shorts ---- */
+body:has(.shorts-page) .site-header,
+body:has(.shorts-page) .site-footer,
+body:has(.shorts-page) footer,
+body:has(.shorts-page) .mybar,
+body:has(.shorts-page) .mybar-drawer,
+body:has(.shorts-page) #myBar,
+body:has(.shorts-page) #mybar{
+  display:none !important;
+}
+body.sv-shorts.sv-watch .site-header,
+body.sv-shorts.sv-watch .site-footer,
+body.sv-shorts.sv-watch footer,
+body.sv-shorts.sv-watch .mybar,
+body.sv-shorts.sv-watch .mybar-drawer,
+body.sv-shorts.sv-watch #myBar,
+body.sv-shorts.sv-watch #mybar{
+  display:none !important;
+}
+
+/* Hide page head/tabs on watch */
+body:has(.shorts-page) .shorts-head,
+body.sv-shorts.sv-watch .shorts-head{
+  display:none !important;
+}
+
+/* Lock body scroll (shorts is self-scrolling) */
+html, body{ height: 100%; }
+body:has(.shorts-page),
+body.sv-shorts.sv-watch{
+  overflow: hidden;
+  background:#000;
+}
+
+/* ---- Shorts feed: FULL HEIGHT (IMPORTANT) ---- */
+.shorts-page .shorts-feed{
+  position: fixed;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: auto !important;
+  height: 100dvh !important;   /* ← これで余白が消える */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background:#000;
+  z-index: 20050;
+}
+
+.shorts-page .short-item{
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  position: relative;
+  height: 100dvh;              /* ← 1枚=1画面 */
+  min-height: 100dvh;
+}
+
+/* Desktop: keep phone-like width centered */
+@media (min-width: 980px){
+  .shorts-page .shorts-feed{
+    display:flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .shorts-page .short-item{
+    width: var(--sv-max-w);
+  }
+}
+
+/* ---- Media fill ---- */
+.shorts-page .short-media{
+  position:absolute; inset:0;
+  background:#000;
+}
+.shorts-page .short-media iframe,
+.shorts-page .short-media video{
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  border:0; background:#000;
+}
+
+/* Shorts: enlarge (crop OK) */
+.shorts-feed .sv-short-video{ object-fit: cover; }
+
+/* ---- Overlay ---- */
+.shorts-page .short-overlay{
+  position:absolute; inset:0;
+  pointer-events:none;
+}
+.shorts-page .short-title{
+  position:absolute;
+  left: 14px;
+  right: 92px;
+  bottom: calc(23px + var(--sv-safe-bottom));
+  pointer-events:none;
+  color: rgba(255,255,255,.92);
+  text-shadow: 0 2px 14px rgba(0,0,0,.75);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.shorts-page .short-actions{
+  position:absolute;
+  right: 12px;
+  bottom: calc(160px + var(--sv-safe-bottom));
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+.shorts-page .short-actions .btn{
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(18, 18, 24, .55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* ---- Left menu (home) ---- */
+.sv-leftnav{
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100dvh;
+  width: var(--sv-nav-w);
+  padding: calc(14px + var(--sv-safe-top)) 12px 14px 12px;
+  z-index: 20080;
+  background: rgba(10,10,14,.78);
+  border-right: 1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-sizing: border-box;
+  display:none;
+}
+body:has(.shorts-page) .sv-leftnav,
+body.sv-shorts.sv-watch .sv-leftnav{
+  display:block;
+}
+.sv-leftnav .sv-navlist{
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sv-leftnav a{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(18,18,24,.40);
+  color: rgba(255,255,255,.90);
+  text-decoration: none;
+}
+.sv-leftnav a:hover{ background: rgba(18,18,24,.62); }
+.sv-leftnav .sv-small{
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,.72);
+}
+
+/* Mobile: hide left menu, show home button */
+@media (max-width: 979px){
+  .sv-leftnav{ display:none !important; }
+  .sv-homebtn{
+    position: fixed;
+    left: 10px;
+    top: calc(10px + var(--sv-safe-top));
+    z-index: 20090;
+    display:none;
+    border: 1px solid rgba(255,255,255,.16);
+    background: rgba(18, 18, 24, .55);
+    color: rgba(255,255,255,.92);
+    padding: 10px 12px;
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    text-decoration:none;
+  }
+  body:has(.shorts-page) .sv-homebtn,
+  body.sv-shorts.sv-watch .sv-homebtn{ display:block; }
+}
+
+/* ---- Scrollbar (desktop) ---- */
+@media (hover:hover) and (pointer:fine){
+  body.sv-shorts .shorts-feed,
+  body:has(.shorts-page) .shorts-feed{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,.25) transparent;
+  }
+  body.sv-shorts .shorts-feed::-webkit-scrollbar,
+  body:has(.shorts-page) .shorts-feed::-webkit-scrollbar{ width:10px; }
+  body.sv-shorts .shorts-feed::-webkit-scrollbar-track,
+  body:has(.shorts-page) .shorts-feed::-webkit-scrollbar-track{ background: transparent; }
+  body.sv-shorts .shorts-feed::-webkit-scrollbar-thumb,
+  body:has(.shorts-page) .shorts-feed::-webkit-scrollbar-thumb{
+    background: rgba(255,255,255,.22);
+    border-radius: 12px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  body.sv-shorts .shorts-feed::-webkit-scrollbar-thumb:hover,
+  body:has(.shorts-page) .shorts-feed::-webkit-scrollbar-thumb:hover{
+    background: rgba(255,255,255,.32);
+    background-clip: padding-box;
+  }
+}
+
+/* ---- Expand modal (contain) ---- */
+.sv-modal{
+  position: fixed; inset: 0;
+  z-index: 20120;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding: 16px;
+  background: rgba(0,0,0,.72);
+}
+.sv-modal.is-open{ display:flex; }
+.sv-modal-inner{
+  width: min(960px, 96vw);
+  height: min(720px, 92vh);
+  border-radius: 18px;
+  background: rgba(12,12,16,.9);
+  border: 1px solid rgba(255,255,255,.14);
+  overflow:hidden;
+  position:relative;
+}
+.sv-modal-close{
+  position:absolute;
+  top: 10px; right: 10px;
+  z-index: 2;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(18, 18, 24, .55);
+  color: rgba(255,255,255,.92);
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.sv-modal-media{ position:absolute; inset:0; }
+.sv-modal-media video,
+.sv-modal-media iframe{
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  background:#000;
+  border:0;
+  object-fit: contain;
+}

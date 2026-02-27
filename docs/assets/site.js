@@ -175,28 +175,54 @@
     const items = Array.from(feed.querySelectorAll(".short-item"));
     if (!items.length) return;
 
-    const ensureSrc = (video) => {
-      if (!video) return;
-      if (video.getAttribute("src")) return;
-      const src = video.getAttribute("data-src");
-      if (src) video.setAttribute("src", src);
+    const ensureVideoSrc = (v) => {
+      if (!v) return;
+      if (v.getAttribute("src")) return;
+      const src = v.getAttribute("data-src");
+      if (src) v.setAttribute("src", src);
     };
 
-    const activate = (item) => {
-      items.forEach((it) => {
-        const v = it.querySelector("video");
-        if (!v) return;
-        if (it === item) return;
+    const ensureFrameSrc = (f) => {
+      if (!f) return;
+      const cur = f.getAttribute("src") || "";
+      if (cur && cur !== "about:blank") return;
+      const src = f.getAttribute("data-src");
+      if (src) f.setAttribute("src", src);
+    };
+
+    const stopItem = (it) => {
+      const v = it.querySelector("video");
+      if (v) {
         try { v.pause(); } catch {}
-      });
+        return;
+      }
+      const f = it.querySelector("iframe");
+      if (f) {
+        // stop playback by unloading (best-effort)
+        try { f.setAttribute("src", "about:blank"); } catch {}
+      }
+    };
 
-      const v = item.querySelector("video");
-      if (!v) return;
+    const activate = (it) => {
+      items.forEach((x) => { if (x !== it) stopItem(x); });
 
-      ensureSrc(v);
-      v.muted = true; // autoplay requires muted
-      const p = v.play();
-      if (p && typeof p.catch === "function") p.catch(() => {});
+      const v = it.querySelector("video");
+      if (v) {
+        ensureVideoSrc(v);
+        v.muted = true; // autoplay requires muted
+        v.loop = true;
+        // autoplay (best-effort). If blocked, show controls so user can start.
+        const p = v.play();
+        if (p && typeof p.catch === "function") {
+          p.catch(() => { try { v.controls = true; } catch {} });
+        }
+        return;
+      }
+
+      const f = it.querySelector("iframe");
+      if (f) {
+        ensureFrameSrc(f);
+      }
     };
 
     // tap to toggle play/pause (except clicking links/buttons)
@@ -206,27 +232,27 @@
 
       const item = t && t.closest ? t.closest(".short-item") : null;
       if (!item) return;
+
       const v = item.querySelector("video");
-      if (!v) return;
-
-      ensureSrc(v);
-      if (v.paused) {
-        v.muted = true;
-        const p = v.play();
-        if (p && typeof p.catch === "function") p.catch(() => {});
-      } else {
-        try { v.pause(); } catch {}
+      if (v) {
+        ensureVideoSrc(v);
+        if (v.paused) {
+          v.muted = true;
+          const p = v.play();
+          if (p && typeof p.catch === "function") p.catch(() => { try { v.controls = true; } catch {} });
+        } else {
+          try { v.pause(); } catch {}
+        }
+        return;
       }
-    });
 
-    // when video ended, go next
-    items.forEach((it, i) => {
-      const v = it.querySelector("video");
-      if (!v) return;
-      v.addEventListener("ended", () => {
-        const next = items[i + 1];
+      const f = item.querySelector("iframe");
+      if (f) {
+        // iframe は中身次第なので、次へスクロール
+        const idx = items.indexOf(item);
+        const next = items[idx + 1];
         if (next) next.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      }
     });
 
     const io = new IntersectionObserver((entries) => {
@@ -238,12 +264,12 @@
     }, { threshold: [0.0, 0.6, 1.0] });
 
     items.forEach((it) => io.observe(it));
-
-    // initial: activate first item
     activate(items[0]);
   };
 
 // ----- MyBar -----
+
+
   const mybar = document.createElement("div");
   mybar.className = "mybar";
   mybar.innerHTML = `
