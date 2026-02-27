@@ -81,14 +81,23 @@
         </div>
 
         <div class="video-embed" style="aspect-ratio: {{ video_aspect_ratio }};">
-          <!-- 余白が出るケースがあるので、iframeは少し拡大して中央トリミングします -->
-          <iframe
-            src="{{ w.sample_movie }}"
-            title="sample movie"
-            allow="autoplay; fullscreen; picture-in-picture"
-            referrerpolicy="no-referrer-when-downgrade"
-            loading="lazy"
-          ></iframe>
+          {% set _sm = (w.sample_movie or '') %}
+          {% set _sm_l = _sm|lower %}
+          {% if '.mp4' in _sm_l %}
+            <video class="video-player" controls playsinline preload="metadata" poster="{{ w.hero_image or '' }}">
+              <source src="{{ _sm }}" type="video/mp4">
+            </video>
+          {% else %}
+            <!-- 埋め込みページURLのケース（iframe） -->
+            <iframe
+              src="{{ _sm }}"
+              title="sample movie"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowfullscreen
+              referrerpolicy="no-referrer-when-downgrade"
+              loading="lazy"
+            ></iframe>
+          {% endif %}
         </div>
       </div>
     {% endif %}

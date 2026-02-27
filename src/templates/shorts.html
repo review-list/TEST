@@ -4,7 +4,7 @@
   <div class="shorts-head container">
     <div class="page-head">
       <h1 class="page-title">{{ heading }}</h1>
-      <p class="muted">スクロールで次の動画へ（サンプル動画のみ）</p>
+      <p class="muted">スクロールで次の動画へ（サンプル動画のみ / ミュート自動再生）</p>
 
       {% if sort_tabs %}
         <div class="sort-tabs" role="navigation" aria-label="並び替え">
@@ -19,11 +19,27 @@
   <div class="shorts-feed" id="shortsFeed" aria-label="ショート動画フィード">
     {% for w in works %}
       {% if w.sample_movie %}
+        {% set _sm = (w.sample_movie or '') %}
+        {% set _sm_l = _sm|lower %}
         {% set buy_url = w.official_url or (root_path ~ "works/" ~ w.id ~ "/") %}
+
         <article class="short-item" data-id="{{ w.id }}">
           <div class="short-media">
-            <video class="short-video" data-src="{{ w.sample_movie | e }}" playsinline muted loop preload="none"></video>
-            <div class="short-tap-hint">タップで再生/停止</div>
+            {% if '.mp4' in _sm_l %}
+              <video class="short-video" data-src="{{ _sm | e }}" playsinline muted loop preload="none"></video>
+            {% else %}
+              <iframe
+                class="short-iframe"
+                src="about:blank"
+                data-src="{{ _sm | e }}"
+                loading="lazy"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowfullscreen
+                referrerpolicy="no-referrer-when-downgrade"
+                title="{{ w.title | e }}"
+              ></iframe>
+            {% endif %}
+            <div class="short-tap-hint">タップで一時停止 / 再開</div>
           </div>
 
           <div class="short-overlay">
