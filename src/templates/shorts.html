@@ -19,27 +19,29 @@
   <div class="shorts-feed" id="shortsFeed" aria-label="ショート動画フィード">
     {% for w in works %}
       {% if w.sample_movie %}
-        {% set _sm = (w.sample_movie or '') %}
-        {% set _sm_l = _sm|lower %}
         {% set buy_url = w.official_url or (root_path ~ "works/" ~ w.id ~ "/") %}
-
-        <article class="short-item" data-id="{{ w.id }}">
+        <article
+          class="short-item"
+          data-id="{{ w.id }}"
+          data-tags='{{ (w.tags or []) | tojson | e }}'
+          data-actresses='{{ (w.actresses or []) | tojson | e }}'
+          data-maker='{{ (w.maker or "") | tojson | e }}'
+          data-series='{{ (w.series or "") | tojson | e }}'
+          data-label='{{ (w.label or "") | tojson | e }}'
+          data-release='{{ (w.release_date or "") | tojson | e }}'
+        >
           <div class="short-media">
-            {% if '.mp4' in _sm_l %}
-              <video class="short-video" data-src="{{ _sm | e }}" playsinline muted loop preload="none"></video>
-            {% else %}
-              <iframe
-                class="short-iframe"
-                src="about:blank"
-                data-src="{{ _sm | e }}"
-                loading="lazy"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowfullscreen
-                referrerpolicy="no-referrer-when-downgrade"
-                title="{{ w.title | e }}"
-              ></iframe>
-            {% endif %}
-            <div class="short-tap-hint">タップで一時停止 / 再開</div>
+            <iframe
+              class="short-iframe"
+              src="about:blank"
+              data-src="{{ w.sample_movie | e }}"
+              loading="lazy"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowfullscreen
+              referrerpolicy="no-referrer-when-downgrade"
+              title="{{ w.title | e }}"
+            ></iframe>
+            <div class="short-tap-hint">タップで再生/停止</div>
           </div>
 
           <div class="short-overlay">
@@ -47,6 +49,7 @@
             <div class="short-actions">
               <a class="btn btn-primary btn-buy" href="{{ buy_url }}" target="_blank" rel="noopener">今すぐ買う</a>
               <a class="btn btn-ghost" href="{{ root_path }}works/{{ w.id }}/">詳細</a>
+              {# お気に入り/拡大は JS で追加 #}
             </div>
           </div>
         </article>
