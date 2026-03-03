@@ -656,16 +656,18 @@ def main() -> None:
     tpl_shorts = env.get_template("shorts.html")
 
     sort_tabs = [
-        {"id": "latest", "label": "最新順", "href": ""},
-        {"id": "new", "label": "新着", "href": "new/"},
-        {"id": "updated", "label": "更新", "href": "updated/"},
-        {"id": "rank", "label": "ランキング順", "href": "rank/"},
-        {"id": "reviews", "label": "レビュー順", "href": "reviews/"},
-        {"id": "movies", "label": "動画あり", "href": "movies/"},
-        {"id": "shorts", "label": "ショート", "href": "shorts/"},
-        {"id": "images", "label": "画像多い", "href": "images/"},
-    ]
 
+        {"id": "latest", "label": "最新作", "href": ""},
+
+        {"id": "rank", "label": "ランキング順", "href": "rank/"},
+
+        {"id": "reviews", "label": "レビュー順", "href": "reviews/"},
+
+        {"id": "movies", "label": "動画あり", "href": "movies/"},
+
+        {"id": "images", "label": "画像多い", "href": "images/"},
+
+    ]
     # clean docs (keep assets? rebuild all)
     if OUT.exists():
         safe_rmtree(OUT)
@@ -852,7 +854,7 @@ def main() -> None:
     render_index(
         OUT,
         page_title="トップ",
-        heading="作品一覧",
+        heading="",
         works_list=home_works,
         path_from_root="",
         pager=pager_home,
@@ -883,7 +885,7 @@ def main() -> None:
         render_index(
             out_dir,
             page_title=f"作品一覧 {p}/{total_pages}",
-            heading="作品一覧",
+            heading="",
             works_list=page_works,
             path_from_root=f"pages/{p}/",
             pager=pager,

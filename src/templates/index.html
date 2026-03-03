@@ -2,7 +2,7 @@
 {% block content %}
 <section class="container">
   <div class="page-head">
-    <h1 class="page-title">{{ heading }}</h1>
+    {% if heading %}<h1 class="page-title">{{ heading }}</h1>{% endif %}
 
     {% if sort_tabs %}
       <div class="sort-tabs" role="navigation" aria-label="並び替え">

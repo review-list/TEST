@@ -14,7 +14,10 @@
 
     {% if w.official_url %}
       <div class="cta cta--under-hero">
-        <a class="btn btn-official btn-official--xl" href="{{ w.official_url }}" target="_blank" rel="noopener">公式ページを見る</a>
+        <a class="btn btn-official btn-official--xl btn-official--cta" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う（公式ページ）</a>
+        {% if w.price_min %}
+          <div class="price-cta">¥{{ "{:,}".format(w.price_min) }}</div>
+        {% endif %}
       </div>
     {% endif %}
 
@@ -100,7 +103,13 @@
           {% endif %}
         </div>
       </div>
+        {% if w.official_url and w.sample_movie %}
+      <div class="cta cta--after-sample">
+        <a class="btn btn-official btn-official--xl btn-official--cta" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う（公式ページ）</a>
+      </div>
     {% endif %}
+
+{% endif %}
 
     {% if grid_images and grid_images|length > 0 %}
       <div class="media-block">
@@ -216,6 +225,11 @@
           </div>
         </a>
       {% endfor %}
+    </div>
+  {% endif %}
+  {% if w.official_url %}
+    <div class="cta cta--bottom-buy">
+      <a class="btn btn-official btn-official--xl btn-official--cta" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う（公式ページ）</a>
     </div>
   {% endif %}
 </section>

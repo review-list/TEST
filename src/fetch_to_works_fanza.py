@@ -383,7 +383,7 @@ def _merge_work(old: Optional[Dict[str, Any]], new: Dict[str, Any]) -> Dict[str,
         merged["sample_movie_size"] = new["sample_movie_size"]
 
     # review/prices
-    for k in ["review_count", "review_average", "price_min", "api_rank"]:
+    for k in ["review_count", "review_average", "price_min", "price_list_min", "price_sale_min", "api_rank"]:
         if new.get(k) is not None:
             merged[k] = new.get(k)
 
@@ -393,7 +393,9 @@ def _merge_work(old: Optional[Dict[str, Any]], new: Dict[str, Any]) -> Dict[str,
 def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None) -> Dict[str, Any]:
     content_id = _clean_str(item.get("content_id"))
     title = _clean_str(item.get("title"))
-    url = _clean_str(item.get("affiliateURL") or item.get("affiliateUrl") or item.get("URL") or item.get("url"))
+    affiliate_url = _clean_str(item.get("affiliateURL") or item.get("affiliateUrl"))
+    official_url = _clean_str(item.get("URL") or item.get("url"))
+    url = affiliate_url or official_url
 
     image_url = _ensure_dict(item.get("imageURL"))
     hero = _safe_https(_clean_str(image_url.get("large") or image_url.get("list") or image_url.get("small")))
@@ -431,6 +433,8 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
 
     # price min (deliveries)
     price_min = None
+    price_list_min = None
+    price_sale_min = None
     prices = _ensure_dict(item.get("prices"))
     deliveries = prices.get("deliveries")
     if isinstance(deliveries, dict):
@@ -452,6 +456,31 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
             except Exception:
                 pass
 
+    # optional: list/sale price (if present in API payload)
+    try:
+        vals_list = []
+        vals_sale = []
+        if isinstance(deliveries, dict):
+            delivery = deliveries.get("delivery")
+            seq = delivery if isinstance(delivery, list) else ([delivery] if isinstance(delivery, dict) else [])
+            for d in seq:
+                if not isinstance(d, dict):
+                    continue
+                for lk in ["list_price", "listPrice", "price_list", "priceList"]:
+                    if d.get(lk) is not None:
+                        try: vals_list.append(int(d[lk]))
+                        except Exception: pass
+                for sk in ["sale_price", "salePrice", "campaign_price", "campaignPrice", "special_price", "specialPrice"]:
+                    if d.get(sk) is not None:
+                        try: vals_sale.append(int(d[sk]))
+                        except Exception: pass
+        if vals_list:
+            price_list_min = min(vals_list)
+        if vals_sale:
+            price_sale_min = min(vals_sale)
+    except Exception:
+        pass
+
     w: Dict[str, Any] = {
         "id": content_id,
         "title": title,
@@ -459,7 +488,8 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
         "release_date": date,
         "tags": genres,
         "actresses": actresses,
-        "official_url": url,
+        "official_url": official_url or url,
+        "affiliate_url": affiliate_url or None,
         "hero_image": hero or None,
         "maker": maker,
         "series": series,
@@ -472,6 +502,8 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
         "review_count": review_count,
         "review_average": review_average,
         "price_min": price_min,
+        "price_list_min": price_list_min,
+        "price_sale_min": price_sale_min,
         "api_rank": api_rank,
     }
 
