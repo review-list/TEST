@@ -119,7 +119,11 @@ body.sv-shorts.sv-watch{
   position:absolute;
   left: 14px;
   right: 92px;
-  bottom: calc(23px + var(--sv-safe-bottom));
+  /*
+   * iOS/Android のネイティブコントロール（シークバー等）が
+   * 下部に出るとタイトルが被るので、少し上へ。
+   */
+  bottom: calc(110px + var(--sv-safe-bottom));
   pointer-events:none;
   color: rgba(255,255,255,.92);
   text-shadow: 0 2px 14px rgba(0,0,0,.75);
@@ -193,18 +197,21 @@ body.sv-shorts.sv-watch .sv-leftnav{
   .sv-leftnav{ display:none !important; }
   .sv-homebtn{
     position: fixed;
-    left: 10px;
+    /* 左上が邪魔になりやすいので右上へ寄せる */
+    left: auto;
+    right: 10px;
     top: calc(10px + var(--sv-safe-top));
     z-index: 20090;
     display:none;
     border: 1px solid rgba(255,255,255,.16);
     background: rgba(18, 18, 24, .55);
     color: rgba(255,255,255,.92);
-    padding: 10px 12px;
+    padding: 8px 10px;
     border-radius: 14px;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     text-decoration:none;
+    opacity: .85;
   }
   body:has(.shorts-page) .sv-homebtn,
   body.sv-shorts.sv-watch .sv-homebtn{ display:block; }
