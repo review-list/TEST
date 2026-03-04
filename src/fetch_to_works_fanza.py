@@ -432,54 +432,53 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
         review_average = None
 
     # price min (deliveries)
-    price_min = None
-    price_list_min = None
-    price_sale_min = None
+    price_min: Optional[int] = None
+    price_list_min: Optional[int] = None
+    price_sale_min: Optional[int] = None
+
     prices = _ensure_dict(item.get("prices"))
+
+    def _to_int(v: Any) -> Optional[int]:
+        if v is None:
+            return None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        s = _clean_str(v)
+        if not s:
+            return None
+        # "1,980" / "1980" / "1980円" などに耐える
+        digits = re.findall(r"\d+", s)
+        if not digits:
+            return None
+        try:
+            return int("".join(digits))
+        except Exception:
+            return None
+
+    # DMM API v3 の prices には price / list_price が入る（現在価格/通常価格）
+    price_sale_min = _to_int(prices.get("price"))
+    price_list_min = _to_int(prices.get("list_price"))
+
+    # deliveries からも最小価格を拾う（配信種別ごとに price がある）
     deliveries = prices.get("deliveries")
     if isinstance(deliveries, dict):
         delivery = deliveries.get("delivery")
-        # delivery can be list or dict
-        if isinstance(delivery, list):
-            vals = []
-            for d in delivery:
-                if isinstance(d, dict) and d.get("price") is not None:
-                    try:
-                        vals.append(int(d["price"]))
-                    except Exception:
-                        pass
-            if vals:
-                price_min = min(vals)
-        elif isinstance(delivery, dict) and delivery.get("price") is not None:
-            try:
-                price_min = int(delivery["price"])
-            except Exception:
-                pass
+        seq = delivery if isinstance(delivery, list) else ([delivery] if isinstance(delivery, dict) else [])
+        vals: List[int] = []
+        for d in seq:
+            if isinstance(d, dict) and d.get("price") is not None:
+                pi = _to_int(d.get("price"))
+                if pi is not None:
+                    vals.append(pi)
+        if vals:
+            min_delivery = min(vals)
+            if (price_sale_min is None) or (min_delivery < price_sale_min):
+                price_sale_min = min_delivery
 
-    # optional: list/sale price (if present in API payload)
-    try:
-        vals_list = []
-        vals_sale = []
-        if isinstance(deliveries, dict):
-            delivery = deliveries.get("delivery")
-            seq = delivery if isinstance(delivery, list) else ([delivery] if isinstance(delivery, dict) else [])
-            for d in seq:
-                if not isinstance(d, dict):
-                    continue
-                for lk in ["list_price", "listPrice", "price_list", "priceList"]:
-                    if d.get(lk) is not None:
-                        try: vals_list.append(int(d[lk]))
-                        except Exception: pass
-                for sk in ["sale_price", "salePrice", "campaign_price", "campaignPrice", "special_price", "specialPrice"]:
-                    if d.get(sk) is not None:
-                        try: vals_sale.append(int(d[sk]))
-                        except Exception: pass
-        if vals_list:
-            price_list_min = min(vals_list)
-        if vals_sale:
-            price_sale_min = min(vals_sale)
-    except Exception:
-        pass
+    # 互換: これまで price_min は「表示用の最小価格」として扱っていた
+    price_min = price_sale_min
 
     w: Dict[str, Any] = {
         "id": content_id,
@@ -530,6 +529,10 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
         w.pop("review_average", None)
     if w["price_min"] is None:
         w.pop("price_min", None)
+    if w["price_list_min"] is None:
+        w.pop("price_list_min", None)
+    if w["price_sale_min"] is None:
+        w.pop("price_sale_min", None)
     if w["api_rank"] is None:
         w.pop("api_rank", None)
 
@@ -590,6 +593,13 @@ def main() -> None:
     else:
         trim_to = int(TRIM_TO) if (bool(TRIM_ENABLE) and int(TRIM_TO) > 0) else 0
 
+    # update-only（作品数を増やさない）でも、
+    # 「テスト用に件数を固定している（trim / freeze-count）」場合は
+    # 作品プールを“入れ替え”できるようにして、rank/review などの情報が
+    # データ内に残るようにする。
+    # （最終保存時に件数は固定されるので「増えない」は維持される）
+    allow_pool_refresh_in_update_only = bool(update_only) and (bool(trim_to) or bool(args.freeze_count))
+
     sess = requests.Session()
     sess.headers.update({"User-Agent": "catalog-fetch/2.0 (+requests)"})
 
@@ -622,8 +632,10 @@ def main() -> None:
                 old_w = by_id.get(wid)
 
                 if old_w is None:
-                    # update-only のときは「新規は追加しない」
-                    if full_mode and (not update_only):
+                    # 通常の update-only は「新規は追加しない」
+                    # ただし trim / freeze-count で件数固定のテスト運用では
+                    # 作品プールを更新して（入れ替え）、rank/review を維持する。
+                    if (full_mode and (not update_only)) or allow_pool_refresh_in_update_only:
                         new_w.setdefault('added_at', _now_jst_iso())
                         new_w.setdefault('updated_at', None)
                         by_id[wid] = new_w
@@ -647,23 +659,87 @@ def main() -> None:
     process("rank", rank_pages, set_rank=True)
 
     # 保存対象 works
-    if update_only:
+    def _release_sort_key(w: Dict[str, Any]) -> str:
+        return _parse_date_for_sort(_clean_str(w.get("release_date")))
+
+    def _review_sort_key(w: Dict[str, Any]) -> tuple:
+        # higher avg -> higher count -> newer
+        avg = w.get("review_average")
+        cnt = w.get("review_count")
+        if avg is None:
+            return (1, 0.0, 0, _release_sort_key(w))
+        try:
+            avgf = float(avg)
+        except Exception:
+            avgf = 0.0
+        try:
+            cnti = int(cnt) if cnt is not None else 0
+        except Exception:
+            cnti = 0
+        return (0, -avgf, -cnti, _release_sort_key(w))
+
+    def _smart_trim_pool(pool: List[Dict[str, Any]], target: int) -> List[Dict[str, Any]]:
+        """テスト用の件数固定でも、rank/review が死なないように混ぜる。"""
+        if target <= 0:
+            return pool
+        latest_sorted = sorted(pool, key=_release_sort_key, reverse=True)
+        ranked_sorted = sorted(
+            [w for w in pool if w.get("api_rank") is not None],
+            key=lambda w: int(w.get("api_rank") or 10**9),
+        )
+        reviewed_sorted = sorted(
+            [w for w in pool if w.get("review_average") is not None],
+            key=_review_sort_key,
+        )
+
+        # quotas (fill不足は latest で埋める)
+        q_latest = int(target * 0.70)
+        q_rank = int(target * 0.15)
+        q_review = target - q_latest - q_rank
+
+        picked: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def add_many(seq: List[Dict[str, Any]], n: int) -> None:
+            nonlocal picked
+            for w in seq:
+                if len(picked) >= target or n <= 0:
+                    return
+                wid = _clean_str(w.get("id"))
+                if not wid or wid in seen:
+                    continue
+                seen.add(wid)
+                picked.append(w)
+                n -= 1
+
+        add_many(latest_sorted, q_latest)
+        add_many(ranked_sorted, q_rank)
+        add_many(reviewed_sorted, q_review)
+        # fill rest by latest
+        add_many(latest_sorted, target)
+        return picked[:target]
+
+    if update_only and (not allow_pool_refresh_in_update_only):
         # 既存の順序/件数を維持（作品数を増やさない）
         ordered_ids = [str(w.get("id")) for w in existing_works if w.get("id")]
         works = [by_id[i] for i in ordered_ids if i in by_id]
     else:
+        # full もしくは「件数固定の入れ替え update-only」
         works = list(by_id.values())
-        # 件数上限（新しい順優先）
-        def sort_key(w: Dict[str, Any]) -> str:
-            return _parse_date_for_sort(_clean_str(w.get("release_date")))
+        works.sort(key=_release_sort_key, reverse=True)
 
-        works.sort(key=sort_key, reverse=True)
+        # 件数上限（増えすぎ防止）
         if len(works) > max_total:
             works = works[:max_total]
 
-    # 追加の切り詰め（テスト用）
-    if trim_to and len(works) > trim_to:
-        works = works[:trim_to]
+        # 作品数固定（freeze-count）
+        if update_only and args.freeze_count and existing_works:
+            target = len(existing_works)
+            works = works[:target]
+
+        # 追加の切り詰め（テスト用）
+        if trim_to and len(works) > trim_to:
+            works = _smart_trim_pool(works, trim_to)
 
     meta["site_name"] = meta.get("site_name") or SITE_NAME
 

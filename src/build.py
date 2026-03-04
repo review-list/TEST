@@ -967,33 +967,6 @@ def main() -> None:
     w_img.sort(key=lambda w: (-(w.get("_img_count") or 0), -(w.get("_release_ts") or 0)))
     render_sort_pages(key="images", heading="サンプル画像（多い順）", works_list=w_img)
 
-    # 新着（added_at → release_date fallback）
-    def _parse_iso_ts(s: Any) -> int:
-        try:
-            if not s:
-                return 0
-            ss = str(s).strip()
-            # accept "YYYY-MM-DD 00:00:00" or ISO
-            ss = ss.replace(" 00:00:00", "")
-            if re.match(r"^\d{4}-\d{2}-\d{2}$", ss):
-                ss = ss + "T00:00:00+09:00"
-            dt = datetime.fromisoformat(ss.replace("Z","+00:00"))
-            return int(dt.timestamp())
-        except Exception:
-            return 0
-
-    new_list = list(works_sorted)
-    for w in new_list:
-        w["_added_ts"] = _parse_iso_ts(w.get("added_at")) or (w.get("_release_ts") or 0)
-    new_list.sort(key=lambda w: -(w.get("_added_ts") or 0))
-    render_sort_pages(key="new", heading="新着", works_list=new_list)
-
-    # 更新（updated_at があるものだけ）
-    updated_list = [w for w in works_sorted if w.get("updated_at")]
-    for w in updated_list:
-        w["_updated_ts"] = _parse_iso_ts(w.get("updated_at"))
-    updated_list.sort(key=lambda w: (-(w.get("_updated_ts") or 0), -(w.get("_release_ts") or 0)))
-    render_sort_pages(key="updated", heading="更新", works_list=updated_list)
 
     # ===== Works pages =====
     for w in works_sorted:

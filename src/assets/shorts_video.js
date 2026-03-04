@@ -506,7 +506,12 @@
 
       const v=document.createElement("video");
       v.className="sv-enhanced-video sv-short-video";
-      v.muted=true; v.loop=true; v.playsInline=true; v.preload="none";
+      v.muted=true; v.loop=true; v.playsInline=true;
+      // 体感の「表示遅れ」を減らすため、初期は metadata を読み込ませる（通信は軽め）
+      // ※実際の src 設定は preload policy で制御
+      v.preload="metadata";
+      // シークバー/停止ボタンの表示遅れ対策：アクティブ時のみ controls をON
+      v.controls=false;
       v.setAttribute("webkit-playsinline","true");
 
       iframe.classList.add("sv-hidden");
@@ -627,11 +632,14 @@
         const d=it._sv; if(!d) return;
         try{d.video.pause();}catch{}
         try{d.video.preload="none";}catch{}
+        try{d.video.controls=false;}catch{}
       });
 
       if(data.iframe && !data.iframe.classList.contains("sv-hidden")) return;
 
       const v=data.video;
+      // 先に controls をON（タップ時のコントロール表示が遅い問題の軽減）
+      try{v.controls=true;}catch{}
       if(!v.src) trySetVideoSrc(v, data.mp4s, v._svFailToIframe);
 
       const p=v.play();
@@ -685,7 +693,14 @@
 
     // first
     const first=q(".short-item",feed);
-    if(first) activate(first);
+    // 初回〜2枚目あたりで「コントロール表示/再生開始」が遅く感じやすいので、
+    // 最初だけ先読みを前倒ししておく。
+    if(first){
+      try{ _svPrimeItem(first, "auto"); }catch{}
+      try{ _svPrimeItem(_svNextShortItem(first, 1), "auto"); }catch{}
+      try{ _svPrimeItem(_svNextShortItem(first, 2), "metadata"); }catch{}
+      activate(first);
+    }
   };
 
   document.addEventListener("DOMContentLoaded", () => {

@@ -14,9 +14,21 @@
 
     {% if w.official_url %}
       <div class="cta cta--under-hero">
-        <a class="btn btn-official btn-official--xl btn-official--cta" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う（公式ページ）</a>
+        <a class="btn btn-official btn-official--xl btn-official--cta btn-official--hero" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う（公式ページ）</a>
+
+        {# 価格は “1つ目の購入ボタン” の直下に1箇所だけ表示 #}
         {% if w.price_min %}
-          <div class="price-cta">¥{{ "{:,}".format(w.price_min) }}</div>
+          <div class="cta-price" aria-label="価格">
+            {% if w.price_list_min and (w.price_list_min|int) > (w.price_min|int) %}
+              <div class="cta-price__row">
+                <div class="cta-price__sale">SALE</div>
+                <div class="cta-price__now">価格：¥{{ "{:,}".format(w.price_min) }}<span class="cta-price__tax">（税込）</span></div>
+              </div>
+              <div class="cta-price__was">通常 ¥{{ "{:,}".format(w.price_list_min) }}</div>
+            {% else %}
+              <div class="cta-price__now cta-price__now--normal">価格：¥{{ "{:,}".format(w.price_min) }}<span class="cta-price__tax">（税込）</span></div>
+            {% endif %}
+          </div>
         {% endif %}
       </div>
     {% endif %}
@@ -82,16 +94,23 @@
           <h2 class="section-title">サンプル動画</h2>
           <a class="muted-link" href="{{ w.sample_movie }}" target="_blank" rel="noopener">別タブで開く</a>
         </div>
-
-        <div class="video-embed" style="aspect-ratio: {{ video_aspect_ratio }};">
-          {% set _sm = (w.sample_movie or '') %}
-          {% set _sm_l = _sm|lower %}
-          {% if '.mp4' in _sm_l %}
+        {% set _sm = (w.sample_movie or '') %}
+        {% set _sm_l = _sm|lower %}
+        {% if '.mp4' in _sm_l %}
+          <div class="video-embed" style="aspect-ratio: {{ video_aspect_ratio }};">
             <video class="video-player" controls playsinline preload="metadata" poster="{{ w.hero_image or '' }}">
               <source src="{{ _sm }}" type="video/mp4">
             </video>
-          {% else %}
-            <!-- 埋め込みページURLのケース（iframe） -->
+          </div>
+        {% else %}
+          {# DMM litevideo は埋め込み側の video が 720×480 固定のことがあり、iframe を大きくしても中身が拡大されず余白が出る。
+             ここでは base サイズ（取得済み sample_movie_size を優先、無ければ 720×480）で iframe を描画し、
+             JS で wrapper 幅に合わせて transform:scale() して “余白なし” で表示する。 #}
+          {% set _bw = (w.sample_movie_size.w if w.sample_movie_size and w.sample_movie_size.w else 720) %}
+          {% set _bh = (w.sample_movie_size.h if w.sample_movie_size and w.sample_movie_size.h else 480) %}
+          <div class="video-embed video-embed--iframe js-litevideo-scale"
+               style="aspect-ratio: {{ _bw }} / {{ _bh }};"
+               data-basew="{{ _bw }}" data-baseh="{{ _bh }}">
             <iframe
               src="{{ _sm }}"
               title="sample movie"
@@ -100,22 +119,23 @@
               referrerpolicy="no-referrer-when-downgrade"
               loading="lazy"
             ></iframe>
-          {% endif %}
-        </div>
+          </div>
+        {% endif %}
       </div>
-        {% if w.official_url and w.sample_movie %}
-      <div class="cta cta--after-sample">
-        <a class="btn btn-official btn-official--xl btn-official--cta" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う（公式ページ）</a>
-      </div>
-    {% endif %}
-
 {% endif %}
 
     {% if grid_images and grid_images|length > 0 %}
       <div class="media-block">
         <div class="media-head">
           <h2 class="section-title">サンプル画像</h2>
-                  </div>
+        </div>
+
+        {# サンプル動画下CTAは廃止。サンプル画像の“上”に配置（文言は公式ページ表記なし） #}
+        {% if w.official_url %}
+          <div class="cta cta--before-images">
+            <a class="btn btn-official btn-official--xl btn-official--cta" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う</a>
+          </div>
+        {% endif %}
 
         <div class="sample-grid" id="sampleGrid">
           {% for img in grid_images %}
@@ -131,6 +151,7 @@
       </div>
     {% endif %}
   </div>
+
 
   {% if related_actress and related_actress|length > 0 %}
     <h2 class="section-title">同じ女優の関連作品</h2>
@@ -227,11 +248,6 @@
       {% endfor %}
     </div>
   {% endif %}
-  {% if w.official_url %}
-    <div class="cta cta--bottom-buy">
-      <a class="btn btn-official btn-official--xl btn-official--cta" href="{{ w.official_url }}" target="_blank" rel="noopener">今すぐ買う（公式ページ）</a>
-    </div>
-  {% endif %}
 </section>
 
 <!-- Lightbox -->
@@ -318,6 +334,33 @@
     grid?.querySelectorAll('.sample-thumb.is-hidden')?.forEach(el => el.classList.remove('is-hidden'));
     showMore.remove();
   });
+})();
+</script>
+
+
+<script>
+(function(){
+  function update(el){
+    var bw = parseFloat(el.dataset.basew || "720");
+    var bh = parseFloat(el.dataset.baseh || "480");
+    if (!bw || !bh) return;
+    var w = el.clientWidth || 0;
+    if (!w) return;
+    var scale = w / bw;
+    el.style.setProperty("--lv-basew", bw + "px");
+    el.style.setProperty("--lv-baseh", bh + "px");
+    el.style.setProperty("--lv-scale", String(scale));
+  }
+  function run(){
+    document.querySelectorAll(".js-litevideo-scale").forEach(update);
+  }
+  window.addEventListener("resize", run, {passive:true});
+  window.addEventListener("orientationchange", run, {passive:true});
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
 })();
 </script>
 

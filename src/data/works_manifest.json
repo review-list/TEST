@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "updated_at": "2026-03-03T08:52:57.041255+00:00",
-  "count": 100,
+  "updated_at": "2026-03-03T13:12:18.833545+00:00",
+  "count": 105,
   "chunk_size": 500,
-  "with_sample_images": 89,
-  "with_sample_movies": 67,
+  "with_sample_images": 78,
+  "with_sample_movies": 75,
   "chunks": [
     {
       "file": "works_chunks/works_0000.json",
-      "count": 100
+      "count": 105
     }
   ],
   "site_name": "Review Catalog"
