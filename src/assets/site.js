@@ -298,6 +298,50 @@
     </div>
   `;
 
+
+
+  // ----- DMM litevideo iframe scaler (prevents blank margins & keeps seekbar visible) -----
+  const initLiteVideoEmbeds = () => {
+    const frames = Array.from(document.querySelectorAll(".video-embed iframe"));
+    if (!frames.length) return;
+
+    const parseBase = (src) => {
+      const m = String(src || "").match(/size=(\d+)_(\d+)/);
+      if (m) return [parseInt(m[1], 10), parseInt(m[2], 10)];
+      return [720, 480];
+    };
+
+    const updateOne = (iframe) => {
+      const wrap = iframe?.closest?.(".video-embed");
+      if (!wrap) return;
+      const [bw, bh] = parseBase(iframe.getAttribute("src") || "");
+      const r = wrap.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) return;
+      const s = (r.width / bw);
+      // enforce wrapper height to match the embedded player aspect (prevents side bars)
+      wrap.style.height = (r.width * (bh / bw)) + "px";
+      wrap.style.setProperty("--lv-basew", bw + "px");
+      wrap.style.setProperty("--lv-baseh", bh + "px");
+      wrap.style.setProperty("--lv-scale", String(s));
+    };
+
+    const updateAll = () => frames.forEach(updateOne);
+    const rafAll = () => requestAnimationFrame(updateAll);
+
+    // keep in sync with layout changes
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => rafAll());
+      frames.forEach((f) => {
+        const wrap = f.closest(".video-embed");
+        if (wrap) ro.observe(wrap);
+      });
+    } else {
+      window.addEventListener("resize", rafAll);
+    }
+
+    frames.forEach((f) => f.addEventListener("load", () => updateOne(f)));
+    rafAll();
+  };
   document.addEventListener("DOMContentLoaded", () => {
     document.body.appendChild(mybar);
     document.body.appendChild(drawer);
@@ -307,6 +351,8 @@
     attachFavButtonToDetail();
 
     initShortsFeed();
+
+    initLiteVideoEmbeds();
 
     mybar.querySelectorAll("button[data-tab]").forEach(btn => {
       btn.addEventListener("click", () => openDrawer(btn.getAttribute("data-tab")));

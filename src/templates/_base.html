@@ -4,18 +4,47 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ (page_title ~ " | " ~ site_name) if page_title else site_name }}</title>
-  <meta name="description" content="{{ (page_title ~ " - " ~ site_name) | e }}">
+  {% set _desc = (meta_description if meta_description else ((page_title ~ " - " ~ site_name) if page_title else site_name)) %}
+  <meta name="description" content="{{ _desc | e }}">
   {% if canonical_url %}
   <link rel="canonical" href="{{ canonical_url }}">
   {% endif %}
 
   <meta property="og:site_name" content="{{ site_name | e }}">
   <meta property="og:title" content="{{ (page_title ~ " | " ~ site_name) if page_title else site_name }}">
-  <meta property="og:description" content="{{ (page_title ~ " - " ~ site_name) | e }}">
+    <meta property="og:description" content="{{ _desc | e }}">
   {% if canonical_url %}
   <meta property="og:url" content="{{ canonical_url }}">
   {% endif %}
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="{{ og_type if og_type else 'website' }}">
+  {% if og_image %}
+  <meta property="og:image" content="{{ og_image }}">
+  {% endif %}
+
+  <meta name="twitter:card" content="{{ 'summary_large_image' if og_image else 'summary' }}">
+  {% if canonical_url %}
+  <meta name="twitter:title" content="{{ (page_title ~ " | " ~ site_name) if page_title else site_name }}">
+  {% endif %}
+  <meta name="twitter:description" content="{{ _desc | e }}">
+  {% if og_image %}
+  <meta name="twitter:image" content="{{ og_image }}">
+  {% endif %}
+
+  {% if prev_url %}
+  <link rel="prev" href="{{ prev_url }}">
+  {% endif %}
+  {% if next_url %}
+  <link rel="next" href="{{ next_url }}">
+  {% endif %}
+
+  {% if noindex %}
+  <meta name="robots" content="noindex,nofollow">
+  {% endif %}
+
+  {% if json_ld %}
+  <script type="application/ld+json">{{ json_ld | safe }}</script>
+  {% endif %}
+
 
   <link rel="stylesheet" href="{{ css_path }}">
   <link rel="stylesheet" href="{{ root_path }}assets/shorts_video.css">

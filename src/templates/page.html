@@ -20,8 +20,9 @@
         {% if w.price_min %}
           <div class="cta-price" aria-label="価格">
             {% if w.price_list_min and (w.price_list_min|int) > (w.price_min|int) %}
+              {% set _sale_rate = (((w.price_list_min|int) - (w.price_min|int)) * 100 / (w.price_list_min|int))|round|int %}
               <div class="cta-price__row">
-                <div class="cta-price__sale">SALE</div>
+                <div class="cta-price__sale"><span class="cta-price__sale-label">SALE</span><span class="cta-price__sale-off">{{ _sale_rate }}% OFF</span></div>
                 <div class="cta-price__now">価格：¥{{ "{:,}".format(w.price_min) }}<span class="cta-price__tax">（税込）</span></div>
               </div>
               <div class="cta-price__was">通常 ¥{{ "{:,}".format(w.price_list_min) }}</div>
@@ -79,12 +80,18 @@
       {% endif %}
     </dl>
 
-    {% if w.description %}
-      <div class="desc">
-        <h2 class="section-title">概要</h2>
-        <p class="desc-text">{{ w.description }}</p>
-      </div>
-    {% endif %}
+    {# 概要：APIのdescriptionが空/タイトルと同じ場合があるので、SEO用の自動説明も併用 #}
+{% set _desc = w.description %}
+{% if _desc and _desc|trim == w.title|trim %}
+  {% set _desc = "" %}
+{% endif %}
+{% if _desc or w.seo_desc %}
+  <div class="desc">
+    <h2 class="section-title">概要</h2>
+    <p class="desc-text">{{ (_desc if _desc else w.seo_desc) }}</p>
+  </div>
+{% endif %}
+
   </div>
 
 <div class="work-media-sections">
@@ -114,6 +121,7 @@
             <iframe
               src="{{ _sm }}"
               title="sample movie"
+              scrolling="no"
               allow="autoplay; fullscreen; picture-in-picture"
               allowfullscreen
               referrerpolicy="no-referrer-when-downgrade"

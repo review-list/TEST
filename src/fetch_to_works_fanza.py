@@ -15,6 +15,7 @@ DMM/FANZA 商品情報API v3（ItemList）から 作品データ（manifest + ch
 import json
 import os
 import re
+import html
 import time
 from datetime import datetime, timezone, timedelta
 import argparse
@@ -50,6 +51,7 @@ DATE_PAGES = 5        # 新着（date）を何ページ取るか（100×5=500件
 RANK_PAGES = 3        # 人気（rank）を何ページ取るか（100×3=300件）
 SLEEP_SEC = 0.6       # API負荷回避
 TIMEOUT = 30
+OFFICIAL_DESC_CACHE_FILE = DATA_DIR / "official_desc_cache.json"
 
 MAX_TOTAL_WORKS = 20000  # 作品データの最大件数（増えすぎ防止）
 UPDATE_EXISTING = True   # 既存作品にも不足があれば上書きする
@@ -139,6 +141,36 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _load_json_file(path: Path) -> Dict[str, Any]:
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+OFFICIAL_DESC_CACHE: Dict[str, str] = _load_json_file(OFFICIAL_DESC_CACHE_FILE)
+_OFFICIAL_DESC_CACHE_DIRTY = False
+
+
+def _save_official_desc_cache() -> None:
+    global _OFFICIAL_DESC_CACHE_DIRTY
+    if not _OFFICIAL_DESC_CACHE_DIRTY:
+        return
+    try:
+        OFFICIAL_DESC_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        OFFICIAL_DESC_CACHE_FILE.write_text(
+            json.dumps(OFFICIAL_DESC_CACHE, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        _OFFICIAL_DESC_CACHE_DIRTY = False
+    except Exception:
+        pass
+
+
 def _ensure_dict(x: Any) -> Dict[str, Any]:
     return x if isinstance(x, dict) else {}
 
@@ -149,6 +181,146 @@ def _ensure_list(x: Any) -> List[Any]:
 
 def _clean_str(s: Any) -> str:
     return str(s).strip() if s is not None else ""
+
+
+def _extract_text_any(v: Any) -> str:
+    """APIの説明文候補をいろいろな型から取り出す（str / dict / list など）"""
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return _clean_str(v)
+    if isinstance(v, dict):
+        for k in ("value", "text", "comment", "description", "contents", "body", "summary"):
+            if k in v:
+                t = _clean_str(v.get(k))
+                if t:
+                    return t
+        return ""
+    if isinstance(v, list):
+        for it in v:
+            t = _extract_text_any(it)
+            if t:
+                return t
+    return _clean_str(v)
+
+
+def _clean_description_text(s: Any, title: str = "") -> str:
+    t = html.unescape(str(s or ""))
+    t = re.sub(r"<br\s*/?>", "\n", t, flags=re.I)
+    t = re.sub(r"<[^>]+>", " ", t)
+    t = re.sub(r"[\t\r ]+", " ", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    t = t.strip(" 　\n")
+    if title:
+        title_s = _clean_str(title)
+        if title_s and t.startswith(title_s):
+            t = t[len(title_s):].lstrip(" 　:-：｜|\n")
+    if len(t) < 25:
+        return ""
+    bad_starts = ("価格", "品番", "収録時間", "配信開始日", "レビュー", "お気に入り", "サンプル")
+    if any(t.startswith(x) for x in bad_starts):
+        return ""
+    return t
+
+
+def _extract_description_from_html(html_text: str, title: str = "") -> str:
+    patterns = [
+        r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\'](.*?)["\']',
+        r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
+        r'"description"\s*:\s*"(.*?)"',
+        r'作品紹介.*?<p[^>]*>(.*?)</p>',
+        r'作品内容.*?<p[^>]*>(.*?)</p>',
+        r'ストーリー.*?<p[^>]*>(.*?)</p>',
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, html_text, flags=re.I | re.S):
+            cand = _clean_description_text(m.group(1), title=title)
+            if cand:
+                return cand
+    return ""
+
+
+def _fetch_official_description(official_url: str, title: str = "") -> str:
+    global _OFFICIAL_DESC_CACHE_DIRTY
+    url = _clean_str(official_url)
+    if not url:
+        return ""
+    if url in OFFICIAL_DESC_CACHE:
+        return _clean_description_text(OFFICIAL_DESC_CACHE.get(url, ""), title=title)
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+        }
+        cookies = {
+            "age_check_done": "1",
+            "cklg": "ja",
+        }
+        r = requests.get(url, headers=headers, cookies=cookies, timeout=TIMEOUT, allow_redirects=True)
+        r.raise_for_status()
+        desc = _extract_description_from_html(r.text, title=title)
+    except Exception:
+        desc = ""
+
+    OFFICIAL_DESC_CACHE[url] = desc
+    _OFFICIAL_DESC_CACHE_DIRTY = True
+    return desc
+
+
+def _extract_description_official(item: Dict[str, Any], title: str = "", official_url: str = "") -> str:
+    """公式ページ由来の説明文っぽいものを抽出（見つからなければ空）"""
+    for k in ("commentary", "comment", "description", "outline", "catchcopy", "introduction"):
+        t = _clean_description_text(_extract_text_any(item.get(k)), title=title)
+        if t:
+            return t
+
+    iteminfo = _ensure_dict(item.get("iteminfo"))
+    for k in ("commentary", "comment", "description", "story", "outline", "summary", "introduction"):
+        t = _clean_description_text(_extract_text_any(iteminfo.get(k)), title=title)
+        if t:
+            return t
+
+    if official_url:
+        t = _fetch_official_description(official_url, title=title)
+        if t:
+            return t
+
+    return ""
+
+
+def _extract_sale_end(item: Dict[str, Any]) -> str:
+    """セール終了日っぽい情報があれば YYYY-MM-DD で返す（無ければ空）"""
+    cand: List[str] = []
+    for k in ("campaign", "campaigns", "campaign_info", "sale", "sales", "prices", "campaigns_info"):
+        if k in item:
+            cand.append(json.dumps(item.get(k), ensure_ascii=False))
+
+    dumped = json.dumps(item, ensure_ascii=False)
+    m = re.finditer(r'(?:sale|campaign|セール|キャンペーン|期間|終了|まで)[^\d]{0,60}(20\d{2})[\-/年](\d{1,2})[\-/月](\d{1,2})', dumped, flags=re.I)
+    for mm in m:
+        y, mo, d = int(mm.group(1)), int(mm.group(2)), int(mm.group(3))
+        cand.append(f"{y:04d}-{mo:02d}-{d:02d}")
+
+    if not cand:
+        s = dumped
+        mm = re.search(r'(20\d{2})[\-/](\d{1,2})[\-/](\d{1,2})', s)
+        if mm:
+            y, mo, d = int(mm.group(1)), int(mm.group(2)), int(mm.group(3))
+            return f"{y:04d}-{mo:02d}-{d:02d}"
+        return ""
+
+    # 日付文字列候補のうち最も未来寄りを採用
+    best = ""
+    for s in cand:
+        mm = re.search(r'(20\d{2})[\-/](\d{1,2})[\-/](\d{1,2})', s)
+        if not mm:
+            continue
+        y, mo, d = int(mm.group(1)), int(mm.group(2)), int(mm.group(3))
+        cur = f"{y:04d}-{mo:02d}-{d:02d}"
+        if cur > best:
+            best = cur
+    return best
 
 
 def _safe_https(url: str) -> str:
@@ -483,7 +655,9 @@ def _make_work_from_item(item: Dict[str, Any], *, api_rank: Optional[int] = None
     w: Dict[str, Any] = {
         "id": content_id,
         "title": title,
-        "description": title,  # APIレスポンスに説明が無いことが多いので、最低限タイトル
+        "description": title,  # 互換: これまで title を入れていた（概要は build 側で補完）
+        "description_official": _extract_description_official(item, title=title, official_url=(official_url or url)) or "",
+        "sale_end": _extract_sale_end(item) or "",
         "release_date": date,
         "tags": genres,
         "actresses": actresses,

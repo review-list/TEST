@@ -11,7 +11,7 @@ import shutil
 import time
 import stat
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -244,7 +244,8 @@ def best_sample_images_for_lightbox(w: Dict[str, Any]) -> List[str]:
 
 
 def best_sample_images_for_grid(w: Dict[str, Any]) -> List[str]:
-    xs = clean_list(w.get("sample_images_small")) or clean_list(w.get("sample_images_large"))
+    # 通信量対策で small 優先にしていたが、見栄え優先で large を先に使う
+    xs = clean_list(w.get("sample_images_large")) or clean_list(w.get("sample_images_small"))
     xs = [safe_https(x) for x in xs if isinstance(x, str) and x.strip()]
     return filter_real_images([x for x in xs if x])
 
@@ -268,6 +269,61 @@ def video_aspect_ratio(w: Dict[str, Any]) -> str:
     if m:
         return f"{int(m.group(1))} / {int(m.group(2))}"
     return "16 / 9"
+
+
+# =============================
+# SEO description helpers
+# =============================
+
+
+def clip_desc(s: str, max_len: int = 120) -> str:
+    s = re.sub(r"\s+", " ", (s or "").strip())
+    if not s:
+        return ""
+    if len(s) <= max_len:
+        return s
+    return s[:max_len].rstrip("。．.、, ") + "…"
+
+
+def make_list_desc(kind: str, name: str = "", works_list: Optional[List[Dict[str, Any]]] = None) -> str:
+    name = (name or "").strip()
+    ws = works_list or []
+    n = len(ws)
+    mov = sum(1 for w in ws if w.get("_has_mov"))
+    img = sum(1 for w in ws if w.get("_has_img"))
+    suffix = f"（全{n}件、動画あり{mov}件、画像あり{img}件）" if n else ""
+
+    if kind == "actress":
+        base = f"女優「{name}」の作品一覧{suffix}。最新作・ランキング順・レビュー順でチェックできます。"
+    elif kind == "genre":
+        base = f"ジャンル「{name}」の作品一覧{suffix}。人気作やレビュー高評価の作品をまとめてチェックできます。"
+    elif kind == "maker":
+        base = f"メーカー「{name}」の作品一覧{suffix}。最新作からまとめてチェックできます。"
+    elif kind == "series":
+        base = f"シリーズ「{name}」の作品一覧{suffix}。関連作品をまとめてチェックできます。"
+    elif kind == "list_actresses":
+        base = "女優一覧。女優名から作品一覧へ移動できます。"
+    elif kind == "list_genres":
+        base = "ジャンル一覧。ジャンル名から作品一覧へ移動できます。"
+    elif kind == "list_makers":
+        base = "メーカー一覧。メーカー名から作品一覧へ移動できます。"
+    elif kind == "list_series":
+        base = "シリーズ一覧。シリーズ名から作品一覧へ移動できます。"
+    elif kind == "sort_latest":
+        base = "最新作一覧。ランキング順・レビュー順・動画あり・画像多いで並べ替えできます。"
+    elif kind == "sort_rank":
+        base = "ランキング順の作品一覧。人気作をまとめてチェックできます。"
+    elif kind == "sort_reviews":
+        base = "レビュー順の作品一覧。高評価の作品をまとめてチェックできます。"
+    elif kind == "sort_movies":
+        base = "サンプル動画ありの作品一覧。"
+    elif kind == "sort_images":
+        base = "サンプル画像が多い作品一覧。"
+    else:
+        base = f"{name}の作品一覧。" if name else "作品一覧。"
+
+    return clip_desc(base, 120)
+
 
 
 # =============================
@@ -343,6 +399,45 @@ def index_by_key(works: List[Dict[str, Any]], key: str) -> Dict[str, List[Dict[s
         if v:
             out.setdefault(v, []).append(w)
     return out
+
+
+def make_work_desc(w: Dict[str, Any]) -> str:
+    """作品詳細ページ用の短い説明文（description が無い/壊れている時の保険）"""
+    title = (w.get("title") or "").strip()
+    actresses = w.get("actresses") or []
+    actress = actresses[0] if actresses else ""
+    maker = (w.get("maker") or "").strip()
+    series = (w.get("series") or "").strip()
+    genres = w.get("genres") or []
+    g1 = genres[0] if genres else ""
+    parts = []
+    if actress:
+        parts.append(f"出演：{actress}")
+    if maker:
+        parts.append(f"メーカー：{maker}")
+    if series:
+        parts.append(f"シリーズ：{series}")
+    if g1:
+        parts.append(f"ジャンル：{g1}")
+    if w.get("_has_mov"):
+        parts.append("サンプル動画あり")
+    # price
+    p = w.get("price_min")
+    lp = w.get("price_list_min")
+    try:
+        if p is not None:
+            p_int = int(p)
+            if lp is not None and int(lp) > p_int:
+                parts.append(f"価格：¥{p_int:,}（セール）")
+            else:
+                parts.append(f"価格：¥{p_int:,}")
+    except Exception:
+        pass
+    core = " / ".join(parts)
+    if core:
+        return clip_desc(f"{title}。{core}。", 140)
+    return clip_desc(f"{title}。", 140)
+
 
 
 def index_by_list_field(works: List[Dict[str, Any]], field: str) -> Dict[str, List[Dict[str, Any]]]:
@@ -699,7 +794,7 @@ def main() -> None:
             base_url=base_url,
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title=page_title,
-            heading=heading,
+            heading="",
             works=works_list,
             css_path=css_path,
             root_path=root_path,
@@ -707,6 +802,8 @@ def main() -> None:
             pager=pager,
             sort_tabs=(sort_tabs if (extra or {}).get("show_sort_tabs") else None),
             sort_id=sort_id,
+            page_desc=(extra or {}).get("page_desc", ""),
+            meta_description=(extra or {}).get("meta_description", ""),
         )
         write_text(out_dir / "index.html", html)
         sitemap_urls.append(path_from_root)
@@ -728,11 +825,13 @@ def main() -> None:
             base_url=base_url,
             canonical_url=(base_url + path_from_root) if base_url else "",
             page_title=page_title,
-            heading=heading,
+            heading="",
             items=items,
             css_path=css_path,
             root_path=root_path,
             nav_active=(extra or {}).get("nav_active", ""),
+            page_desc=(extra or {}).get("page_desc", ""),
+            meta_description=(extra or {}).get("meta_description", ""),
         )
         write_text(out_dir / "index.html", html)
         sitemap_urls.append(path_from_root)
@@ -754,6 +853,23 @@ def main() -> None:
         grid = best_sample_images_for_grid(w)
 
         rels = relmap.get(w["id"], {})
+        w2 = dict(w)
+        # overview/SEO用の説明文（API description が空/壊れている場合の保険）
+        w2["seo_desc"] = make_work_desc(w2)
+
+        # セール残り日数（sale_end がある場合）
+        sale_end = w2.get("sale_end")
+        if sale_end:
+            try:
+                jst = timezone(timedelta(hours=9))
+                today = datetime.now(jst).date()
+                endd = datetime.fromisoformat(str(sale_end)[:10]).date()
+                w2["sale_end_days"] = (endd - today).days
+            except Exception:
+                w2["sale_end_days"] = None
+        else:
+            w2["sale_end_days"] = None
+
         html = tpl_page.render(
             site_name=site_name,
             base_url=base_url,
@@ -762,7 +878,7 @@ def main() -> None:
             css_path=css_path,
             root_path=root_path,
             nav_active="",
-            w=w,
+            w=w2,
             lightbox_images=lightbox,
             grid_images=grid,
             video_aspect_ratio=video_aspect_ratio(w),
@@ -919,8 +1035,8 @@ def main() -> None:
 
             render_index(
                 out_dir,
-                page_title=(heading if p == 1 else f"{heading} {p}/{total}"),
-                heading=heading,
+                page_title=((heading if key=="latest" else "最新作") if p == 1 else f"{(heading if key=='latest' else '最新作')} {p}/{total}"),
+                heading="",
                 works_list=page_works,
                 path_from_root=path_from_root,
                 pager=pager,
@@ -967,8 +1083,9 @@ def main() -> None:
     w_img.sort(key=lambda w: (-(w.get("_img_count") or 0), -(w.get("_release_ts") or 0)))
     render_sort_pages(key="images", heading="サンプル画像（多い順）", works_list=w_img)
 
+    # 新着/更新ページは不要（生成しない）
 
-    # ===== Works pages =====
+# ===== Works pages =====
     for w in works_sorted:
         wid = w["id"]
         out_dir = OUT / "works" / wid
@@ -982,7 +1099,7 @@ def main() -> None:
         heading="女優一覧",
         items=actress_items,
         path_from_root="actresses/",
-        extra={"nav_active": "actresses"},
+        extra={"nav_active": "actresses", "page_desc": make_list_desc("list_actresses"), "meta_description": make_list_desc("list_actresses")},
     )
     for a in actresses_keys:
         works_a = sort_works_newest(by_actress.get(a, []))
@@ -994,7 +1111,7 @@ def main() -> None:
             works_list=works_a,
             path_from_root=f"actresses/{slugify(a)}/",
             pager=None,
-            extra={"nav_active": "actresses"},
+            extra={"nav_active": "actresses", "page_desc": make_list_desc("actress", a, works_a), "meta_description": make_list_desc("actress", a, works_a)},
         )
 
     # ===== Genres =====
@@ -1005,7 +1122,7 @@ def main() -> None:
         heading="ジャンル一覧",
         items=genre_items,
         path_from_root="genres/",
-        extra={"nav_active": "genres"},
+        extra={"nav_active": "genres", "page_desc": make_list_desc("list_genres"), "meta_description": make_list_desc("list_genres")},
     )
     for g in genres_keys:
         works_g = sort_works_newest(by_genre.get(g, []))
@@ -1017,7 +1134,7 @@ def main() -> None:
             works_list=works_g,
             path_from_root=f"genres/{slugify(g)}/",
             pager=None,
-            extra={"nav_active": "genres"},
+            extra={"nav_active": "genres", "page_desc": make_list_desc("genre", g, works_g), "meta_description": make_list_desc("genre", g, works_g)},
         )
 
     # ===== Makers =====
@@ -1028,7 +1145,7 @@ def main() -> None:
         heading="メーカー一覧",
         items=maker_items,
         path_from_root="makers/",
-        extra={"nav_active": "makers"},
+        extra={"nav_active": "makers", "page_desc": make_list_desc("list_makers"), "meta_description": make_list_desc("list_makers")},
     )
     for m in makers_keys:
         works_m = sort_works_newest(by_maker.get(m, []))
@@ -1040,7 +1157,7 @@ def main() -> None:
             works_list=works_m,
             path_from_root=f"makers/{slugify(m)}/",
             pager=None,
-            extra={"nav_active": "makers"},
+            extra={"nav_active": "makers", "page_desc": make_list_desc("maker", m, works_m), "meta_description": make_list_desc("maker", m, works_m)},
         )
 
     # ===== Series =====
@@ -1051,7 +1168,7 @@ def main() -> None:
         heading="シリーズ一覧",
         items=series_items,
         path_from_root="series/",
-        extra={"nav_active": "series"},
+        extra={"nav_active": "series", "page_desc": make_list_desc("list_series"), "meta_description": make_list_desc("list_series")},
     )
     for s in series_keys:
         works_s = sort_works_newest(by_series.get(s, []))
@@ -1063,7 +1180,7 @@ def main() -> None:
             works_list=works_s,
             path_from_root=f"series/{slugify(s)}/",
             pager=None,
-            extra={"nav_active": "series"},
+            extra={"nav_active": "series", "page_desc": make_list_desc("series", s, works_s), "meta_description": make_list_desc("series", s, works_s)},
         )
 
     # ===== Featured =====

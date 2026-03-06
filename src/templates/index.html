@@ -4,6 +4,8 @@
   <div class="page-head">
     {% if heading %}<h1 class="page-title">{{ heading }}</h1>{% endif %}
 
+    {% if page_desc %}<p class="muted seo-desc">{{ page_desc }}</p>{% endif %}
+
     {% if sort_tabs %}
       <div class="sort-tabs" role="navigation" aria-label="並び替え">
         {% for t in sort_tabs %}
