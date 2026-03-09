@@ -1,4 +1,10 @@
 (() => {
+  "use strict";
+
+  // ============================================================
+  // Local storage keys / persistence helpers
+  // ============================================================
+
   const KEY_FAV = "catalog:favs:v1";
   const KEY_REC = "catalog:recents:v1";
   const KEY_INFO = "catalog:workinfo:v1";
@@ -8,6 +14,9 @@
   };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
+  // ============================================================
+  // Work ID / card info helpers
+  // ============================================================
   const getIdFromHref = (href) => {
     try {
       const u = new URL(href, location.href);
@@ -39,6 +48,9 @@
     return { id, title, img, href };
   };
 
+  // ============================================================
+  // In-memory state
+  // ============================================================
   const state = {
     favs: load(KEY_FAV, []),
     rec: load(KEY_REC, []),
@@ -81,6 +93,9 @@
     persist();
   };
 
+  // ============================================================
+  // Favorite UI (card / detail)
+  // ============================================================
   // ----- UI: star buttons -----
   const attachFavButtonToCard = (a) => {
     if (!a || a.__favAttached) return;
@@ -153,6 +168,22 @@
     updateBar();
   };
 
+  // ----- Inline buy button (prevents card-wide link conflict) -----
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target && ev.target.closest ? ev.target.closest(".js-buy-inline") : null;
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const url = btn.getAttribute("data-buy-url") || "";
+    if (!url) return;
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      location.href = url;
+    }
+  });
+
+  // ----- Work cards / dynamic card observation -----
   // initial cards
   const attachAllCards = () => {
     document.querySelectorAll("a.work-card").forEach(attachFavButtonToCard);
@@ -167,6 +198,9 @@
   };
 
   
+  // ============================================================
+  // Shorts page behavior
+  // ============================================================
   // ----- Shorts feed (vertical snap) -----
   const initShortsFeed = () => {
     const feed = document.getElementById("shortsFeed");
@@ -267,8 +301,7 @@
     activate(items[0]);
   };
 
-// ----- MyBar -----
-
+  // ----- MyBar UI -----
 
   const mybar = document.createElement("div");
   mybar.className = "mybar";
@@ -300,6 +333,9 @@
 
 
 
+  // ============================================================
+  // Detail page video embed scaler
+  // ============================================================
   // ----- DMM litevideo iframe scaler (prevents blank margins & keeps seekbar visible) -----
   const initLiteVideoEmbeds = () => {
     const frames = Array.from(document.querySelectorAll(".video-embed iframe"));
@@ -342,7 +378,8 @@
     frames.forEach((f) => f.addEventListener("load", () => updateOne(f)));
     rafAll();
   };
-  document.addEventListener("DOMContentLoaded", () => {
+  // ----- App bootstrap -----
+  const initApp = () => {
     document.body.appendChild(mybar);
     document.body.appendChild(drawer);
 
@@ -351,13 +388,14 @@
     attachFavButtonToDetail();
 
     initShortsFeed();
-
     initLiteVideoEmbeds();
 
-    mybar.querySelectorAll("button[data-tab]").forEach(btn => {
+    mybar.querySelectorAll("button[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => openDrawer(btn.getAttribute("data-tab")));
     });
-    mybar.querySelector("#toTop").addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+    mybar.querySelector("#toTop").addEventListener("click", () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
 
     drawer.addEventListener("click", (ev) => {
       const t = ev.target;
@@ -366,8 +404,13 @@
     });
 
     updateBar();
-  });
+  };
 
+  document.addEventListener("DOMContentLoaded", initApp);
+
+  // ============================================================
+  // MyBar behavior
+  // ============================================================
   let activeTab = "favs";
   const openDrawer = (tab) => {
     activeTab = tab || "favs";
@@ -410,5 +453,4 @@
   const escapeHtml = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   })[c]);
-
 })();
