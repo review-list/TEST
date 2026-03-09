@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  {# Basic meta #}
+  <title>{{ (page_title ~ " | " ~ site_name) if page_title else site_name }}</title>
+  {% set _desc = (meta_description if meta_description else ((page_title ~ " - " ~ site_name) if page_title else site_name)) %}
+  <meta name="description" content="{{ _desc | e }}">
+  {% if canonical_url %}
+  <link rel="canonical" href="{{ canonical_url }}">
+  {% endif %}
+
+  {# Open Graph #}
+  <meta property="og:site_name" content="{{ site_name | e }}">
+  <meta property="og:title" content="{{ (page_title ~ " | " ~ site_name) if page_title else site_name }}">
+  <meta property="og:description" content="{{ _desc | e }}">
+  {% if canonical_url %}
+  <meta property="og:url" content="{{ canonical_url }}">
+  {% endif %}
+  <meta property="og:type" content="{{ og_type if og_type else 'website' }}">
+  {% if og_image %}
+  <meta property="og:image" content="{{ og_image }}">
+  {% endif %}
+
+  {# Twitter card #}
+  <meta name="twitter:card" content="{{ 'summary_large_image' if og_image else 'summary' }}">
+  <meta name="twitter:title" content="{{ (page_title ~ " | " ~ site_name) if page_title else site_name }}">
+  <meta name="twitter:description" content="{{ _desc | e }}">
+  {% if og_image %}
+  <meta name="twitter:image" content="{{ og_image }}">
+  {% endif %}
+
+  {# Pagination / crawling control #}
+  {% if prev_url %}
+  <link rel="prev" href="{{ prev_url }}">
+  {% endif %}
+  {% if next_url %}
+  <link rel="next" href="{{ next_url }}">
+  {% endif %}
+  {% if noindex %}
+  <meta name="robots" content="noindex,nofollow">
+  {% endif %}
+
+  {# Structured data #}
+  {% if json_ld %}
+  <script type="application/ld+json">{{ json_ld | safe }}</script>
+  {% endif %}
+
+  {# Common stylesheet + page specific head additions #}
+  <link rel="stylesheet" href="{{ css_path }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <div class="site-brand">
+        <a class="site-title" href="{{ root_path }}"> {{ site_name }} </a>
+      </div>
+      <nav class="site-nav">
+        <a class="nav-link nav-link--shorts {{ 'is-active' if nav_active=='shorts' else '' }}" href="{{ root_path }}shorts/">ショート動画 《サンプル》を見る</a>
+        <div class="site-nav-secondary">
+          <a class="nav-link {{ 'is-active' if nav_active=='home' else '' }}" href="{{ root_path }}">ホーム</a>
+          <a class="nav-link {{ 'is-active' if nav_active=='search' else '' }}" href="{{ root_path }}search/">検索</a>
+          <a class="nav-link {{ 'is-active' if nav_active=='actresses' else '' }}" href="{{ root_path }}actresses/">女優</a>
+          <a class="nav-link {{ 'is-active' if nav_active=='genres' else '' }}" href="{{ root_path }}genres/">ジャンル</a>
+          <a class="nav-link {{ 'is-active' if nav_active=='makers' else '' }}" href="{{ root_path }}makers/">メーカー</a>
+          <a class="nav-link {{ 'is-active' if nav_active=='series' else '' }}" href="{{ root_path }}series/">シリーズ</a>
+          <a class="nav-link {{ 'is-active' if nav_active=='featured' else '' }}" href="{{ root_path }}featured/">特集</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="site-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <small>© {{ site_name }}</small>
+      {% if base_url %}
+      <a class="footer-link" href="{{ base_url }}feed.xml">RSS</a>
+      {% endif %}
+    </div>
+  </footer>
+
+  {# Common script + page specific scripts #}
+  <script src="{{ root_path }}assets/site.js" defer></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

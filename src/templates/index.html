@@ -1,0 +1,118 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="container">
+  <div class="page-head">
+    {% if heading %}<h1 class="page-title">{{ heading }}</h1>{% endif %}
+
+    {% if page_desc %}<p class="muted seo-desc">{{ page_desc }}</p>{% endif %}
+
+    {% if sort_tabs %}
+      <div class="sort-tabs" role="navigation" aria-label="並び替え">
+        {% for t in sort_tabs %}
+          <a class="sort-tab{% if sort_id == t.id %} is-active{% endif %}" href="{{ root_path }}{{ t.href }}">{{ t.label }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if pager and pager.page %}
+  <div class="pager">
+    {% if pager.prev is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">← 前</span>
+    {% endif %}
+
+    <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
+
+    {% if pager.next is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">次 →</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="works-grid">
+    {% for w in works %}
+      <a class="work-card" href="{{ root_path }}works/{{ w.id }}/" aria-label="{{ w.title }}">
+        <div class="work-thumb">
+          {% if w.hero_image %}
+            <img loading="lazy" src="{{ w.hero_image }}" alt="{{ w.title }}">
+          {% else %}
+            <div class="thumb-placeholder"></div>
+          {% endif %}
+          {% if sort_id == "rank" and w._tmp_rank %}
+            <span class="badge badge-rank badge-rank--pin">{{ w._tmp_rank }}位</span>
+          {% endif %}
+          <div class="work-badges">
+{% if w._has_img %}
+              <span class="badge badge-img">🖼️ サンプル画像あり</span>
+            {% endif %}
+            {% if w._has_mov %}
+              <span class="badge badge-mov">🎬 サンプル動画あり</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="work-meta">
+          <div class="work-title">{{ w.title }}</div>
+
+          <div class="work-card-flags">
+            {% if w.price_list_min and w.price_min and (w.price_list_min|int) > (w.price_min|int) %}
+              {% set _card_sale_rate = (((w.price_list_min|int) - (w.price_min|int)) * 100 / (w.price_list_min|int))|round|int %}
+              <span class="card-flag card-flag--sale">SALE {{ _card_sale_rate }}%OFF</span>
+            {% endif %}
+            {% if w.review_average and (w.review_average|float) >= 4.0 %}
+              <span class="card-flag card-flag--review">★ {{ '%.1f'|format(w.review_average|float) }}</span>
+            {% endif %}
+          </div>
+
+          {% if w.price_min %}
+            <div class="work-price-row{% if w.price_list_min and (w.price_list_min|int) > (w.price_min|int) %} is-sale{% endif %}">
+              <div class="work-price-box">
+                <span class="work-price{% if w.price_list_min and (w.price_list_min|int) > (w.price_min|int) %} is-sale{% endif %}">¥{{ "{:,}".format(w.price_min) }}</span>
+                {% if w.price_list_min and (w.price_list_min|int) > (w.price_min|int) %}
+                  <span class="work-price-was">¥{{ "{:,}".format(w.price_list_min) }}</span>
+                {% endif %}
+              </div>
+              {% if w.affiliate_url or w.official_url %}
+                <button
+                  type="button"
+                  class="buy-inline-btn js-buy-inline"
+                  data-buy-url="{{ (w.affiliate_url or w.official_url) | e }}"
+                  aria-label="{{ w.title }} を購入"
+                >購入</button>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          <div class="work-sub">
+            {% if w.release_date %}<span class="muted">{{ (w.release_date or '')|replace(' 00:00:00','') }}</span>{% endif %}
+            {% if w.maker %}<span class="dot">•</span><span class="muted">{{ w.maker }}</span>{% endif %}
+            {% if w.review_average %}<span class="dot">•</span><span class="muted">評価 {{ '%.1f'|format(w.review_average|float) }}{% if w.review_count %} ({{ w.review_count }}){% endif %}</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+
+  {% if pager and pager.page %}
+  <div class="pager pager--bottom">
+    {% if pager.prev is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.prev }}">← 前</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">← 前</span>
+    {% endif %}
+
+    <span class="pager-text">{{ pager.page }} / {{ pager.total }}</span>
+
+    {% if pager.next is not none %}
+      <a class="btn btn-ghost" href="{{ root_path }}{{ pager.next }}">次 →</a>
+    {% else %}
+      <span class="btn btn-ghost is-disabled">次 →</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

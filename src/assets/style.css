@@ -1,0 +1,10 @@
+/*
+ * style.css
+ * 共通CSSの入口ファイル
+ * 実際の修正は下記の分割CSSで行う
+ */
+
+@import url("./style_base.css");
+@import url("./style_components.css");
+@import url("./style_pages.css");
+@import url("./style_overrides.css");

@@ -1,0 +1,20 @@
+{% extends "_base.html" %}
+{% block content %}
+  <section class="herohead">
+    <h1 class="h1">女優一覧</h1>
+    <p class="sub">女優ページへ移動できます。</p>
+
+    <div class="toolbar">
+      <div class="search">
+        <input id="q" class="search__input" type="search" placeholder="女優名で検索" autocomplete="off">
+        <div class="search__hint">※このページ内の表示を絞り込みます</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="list" id="grid">
+    {% for a in actresses %}
+      <a class="list__item work" data-title="{{ a|e }}" href="{{ a }}/index.html">{{ a }}</a>
+    {% endfor %}
+  </section>
+{% endblock %}

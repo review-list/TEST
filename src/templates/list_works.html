@@ -1,0 +1,15 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="container">
+  <div class="page-head">
+    <h1 class="page-title">{{ heading }}</h1>
+    {% if page_desc %}<p class="muted seo-desc">{{ page_desc }}</p>{% endif %}
+  </div>
+
+  <div class="name-grid">
+    {% for it in items %}
+      <a class="name-item" href="{{ root_path }}{{ it.href }}">{{ it.name }}</a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

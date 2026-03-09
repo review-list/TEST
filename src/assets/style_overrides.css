@@ -1,0 +1,365 @@
+/*
+ * style_overrides.css
+ * 最後に効かせる上書き専用
+ * - SALE表示の微調整
+ * - 一覧カード情報整理の上書き
+ * - 直近の緊急修正
+ * - ロールバック防止のための append-only 調整
+ */
+
+/* === sale/ui refinements === */
+.cta-price__sale{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: linear-gradient(180deg, rgba(220,38,38,.98), rgba(185,28,28,.98));
+  box-shadow: 0 10px 24px rgba(127,29,29,.32);
+  line-height: 1;
+}
+.cta-price__sale-label{
+  color: #facc15;
+  font-weight: 1000;
+  letter-spacing: .06em;
+}
+.cta-price__sale-off{
+  color: #fff;
+  font-weight: 1000;
+}
+.cta-price__was{
+  margin-top: 8px;
+  font-size: 16px;
+  opacity: .92;
+  color: rgba(255,255,255,.84);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(255,255,255,.62);
+  text-decoration-skip-ink: auto;
+}
+
+/* === overview/card info improvements === */
+.work-card-flags{
+  display:flex;
+  flex-wrap:wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.card-flag{
+  display:inline-flex;
+  align-items:center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .02em;
+  border: 1px solid rgba(255,255,255,.16);
+}
+.card-flag--sale{
+  color: #fff;
+  background: rgba(220,38,38,.88);
+  border-color: rgba(248,113,113,.55);
+}
+.card-flag--review{
+  color: #fde68a;
+  background: rgba(120,53,15,.42);
+  border-color: rgba(250,204,21,.35);
+}
+.card-flag--rank{
+  color: #dbeafe;
+  background: rgba(30,64,175,.42);
+  border-color: rgba(96,165,250,.36);
+}
+.work-price-row{
+  display:flex;
+  align-items:baseline;
+  gap: 8px;
+  margin-top: 2px;
+}
+.work-price{
+  color: #fb7185;
+  font-size: 18px;
+  font-weight: 1000;
+  letter-spacing: .01em;
+}
+.work-price-was{
+  color: rgba(255,255,255,.62);
+  font-size: 12px;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.work-sub{
+  display:flex;
+  flex-wrap:wrap;
+  gap: 4px;
+  align-items:center;
+}
+.btn-official--cta{
+  width: 100%;
+  white-space: nowrap;
+}
+
+
+/* === 2026-03 sale/detail/card refinements (append-only to avoid rollback) === */
+.cta-price__sale{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 16px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.14);
+  background:linear-gradient(180deg, rgba(225,29,72,.98), rgba(190,24,93,.96));
+  box-shadow:0 12px 28px rgba(159,18,57,.34);
+  line-height:1;
+}
+.cta-price__sale-label{
+  color:#facc15;
+  font-weight:1000;
+  letter-spacing:.06em;
+}
+.cta-price__sale-off{
+  color:#fff;
+  font-weight:1000;
+  letter-spacing:.02em;
+}
+.cta-price__was{
+  margin-top:8px;
+  font-size:16px;
+  opacity:.96;
+  color:rgba(255,255,255,.88);
+  text-decoration:line-through;
+  text-decoration-thickness:1px;
+  text-decoration-color:rgba(255,255,255,.38);
+  text-decoration-skip-ink:auto;
+}
+.cta-price__meta{
+  margin-top:8px;
+  color:#fecdd3;
+  font-size:13px;
+  font-weight:700;
+}
+.work-title-link{
+  color:inherit;
+  text-decoration:none;
+  border-bottom:1px solid transparent;
+}
+.work-title-link:hover{
+  color:#fff;
+  border-bottom-color:rgba(255,255,255,.32);
+}
+.work-card-flags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:4px;
+}
+.card-flag{
+  display:inline-flex;
+  align-items:center;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.02em;
+  border:1px solid rgba(255,255,255,.16);
+}
+.card-flag--sale{
+  color:#fff;
+  background:linear-gradient(180deg, rgba(225,29,72,.94), rgba(190,24,93,.88));
+  border-color:rgba(251,113,133,.56);
+}
+.card-flag--review{
+  color:#fde68a;
+  background:rgba(120,53,15,.42);
+  border-color:rgba(250,204,21,.35);
+}
+.card-flag--rank{
+  color:#dbeafe;
+  background:rgba(30,64,175,.42);
+  border-color:rgba(96,165,250,.36);
+}
+.work-price-row{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  margin-top:3px;
+}
+.work-price{
+  color:#fb7185;
+  font-size:19px;
+  font-weight:900;
+}
+.work-price-was{
+  color:rgba(255,255,255,.56);
+  text-decoration:line-through;
+  text-decoration-thickness:1px;
+  text-decoration-color:rgba(255,255,255,.24);
+  font-size:12px;
+}
+.work-sub{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  margin-top:6px;
+  font-size:12px;
+  line-height:1.45;
+}
+.work-sub .dot{
+  color:rgba(255,255,255,.26);
+  padding:0 2px;
+}
+.fav-detail-btn{
+  white-space:nowrap;
+  flex-shrink:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+
+/* === 2026-03-08 list price tone adjustment === */
+.work-price{
+  color: rgba(255,255,255,.88);
+}
+.work-price.is-sale,
+.work-price-row.is-sale .work-price{
+  color:#fb7185;
+}
+
+/* === sample image CTA / more button restore after style.css entry split === */
+.cta--before-images{
+  display:block;
+  margin-top:8px;
+  margin-bottom:12px;
+}
+
+.cta--before-images .btn-buy-here,
+.cta--before-images .btn-buy-here--wide,
+.cta--before-images .btn-buy-here--sample{
+  display:flex;
+  width:100%;
+  min-height:52px;
+  justify-content:center;
+  align-items:center;
+  padding:14px 18px;
+  border-radius:14px;
+  border:1px solid rgba(248,113,113,.40);
+  background:linear-gradient(180deg, rgba(239,68,68,.96), rgba(220,38,38,.96));
+  color:#fff;
+  font-size:16px;
+  font-weight:900;
+  letter-spacing:.02em;
+  box-shadow:0 12px 28px rgba(153,27,27,.24);
+  white-space:nowrap;
+}
+.cta--before-images .btn-buy-here:hover,
+.cta--before-images .btn-buy-here--wide:hover,
+.cta--before-images .btn-buy-here--sample:hover{
+  background:linear-gradient(180deg, rgba(248,113,113,.98), rgba(220,38,38,.98));
+  color:#fff;
+  transform:translateY(-1px);
+}
+
+.sample-more-wrap,
+.sample-more-wrap--center{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  width:100%;
+  margin-top:14px;
+}
+.sample-more-wrap .btn-show-more,
+.sample-more-wrap--center .btn-show-more,
+#showMoreImages{
+  display:inline-flex;
+  justify-content:center;
+  align-items:center;
+  min-width:min(100%, 280px);
+  max-width:100%;
+  margin:0 auto;
+  padding:11px 18px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.05);
+  color:var(--text);
+  font-weight:800;
+  text-align:center;
+  white-space:nowrap;
+}
+.sample-more-wrap .btn-show-more:hover,
+.sample-more-wrap--center .btn-show-more:hover,
+#showMoreImages:hover{
+  background:rgba(255,255,255,.09);
+}
+
+/* === 2026-03 pager polish + search page activation === */
+.pager{
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 16px 0 22px;
+}
+.pager .btn-ghost{
+  min-width: 124px;
+  min-height: 44px;
+  padding: 11px 18px;
+  border-color: rgba(255,255,255,.18);
+  background: linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.05));
+  box-shadow: 0 12px 26px rgba(0,0,0,.22);
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+.pager .btn-ghost:hover{
+  transform: translateY(-1px);
+  border-color: rgba(118,77,255,.44);
+  background: linear-gradient(180deg, rgba(118,77,255,.18), rgba(255,255,255,.08));
+}
+.pager-text{
+  min-width: 108px;
+  padding: 10px 16px;
+  border-color: rgba(118,77,255,.24);
+  background: linear-gradient(180deg, rgba(118,77,255,.18), rgba(255,255,255,.05));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+@media (max-width: 520px){
+  .pager{
+    gap: 10px;
+  }
+  .pager .btn-ghost,
+  .pager-text{
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.tag-count{
+  opacity: .72;
+  font-size: 11px;
+  margin-left: 4px;
+}
+.search-card{
+  display: block;
+}
+.search-card__sub{
+  margin-top: 8px;
+}
+.search-card__tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.search-chip{
+  padding: 5px 8px;
+  font-size: 11px;
+  background: rgba(255,255,255,.04);
+}
+.search-empty{
+  grid-column: 1 / -1;
+  padding: 24px 18px;
+  border: 1px dashed rgba(255,255,255,.16);
+  border-radius: 16px;
+  background: rgba(255,255,255,.03);
+  text-align: center;
+  color: rgba(255,255,255,.78);
+}
