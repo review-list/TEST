@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "updated_at": "2026-03-08T08:50:59.778548+00:00",
+  "updated_at": "2026-03-09T02:51:27.765653+00:00",
   "count": 105,
   "chunk_size": 500,
-  "with_sample_images": 98,
-  "with_sample_movies": 76,
+  "with_sample_images": 89,
+  "with_sample_movies": 73,
   "chunks": [
     {
       "file": "works_chunks/works_0000.json",
