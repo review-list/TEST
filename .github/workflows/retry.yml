@@ -1,0 +1,41 @@
+name: Oracle A1 Auto Retry
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup OCI CLI
+        run: pip install oci-cli
+
+      - name: Configure OCI
+        run: |
+          mkdir -p ~/.oci
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
+          cat > ~/.oci/config << EOF
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=ap-tokyo-1
+          key_file=~/.oci/key.pem
+          EOF
+
+      - name: Apply stack
+        run: |
+          JOB=$(oci resource-manager job create-apply-job \
+            --stack-id ${{ secrets.OCI_STACK_ID }} \
+            --execution-plan-strategy AUTO_APPROVED 2>/dev/null)
+          JOB_ID=$(echo $JOB | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['id'])")
+          echo "Job ID: $JOB_ID"
+          for i in $(seq 1 10); do
+            sleep 20
+            STATUS=$(oci resource-manager job get --job-id $JOB_ID 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['lifecycle-state'])")
+            echo "Status: $STATUS"
+            if [ "$STATUS" = "SUCCEEDED" ]; then echo "成功！"; exit 0; fi
+            if [ "$STATUS" = "FAILED" ]; then echo "失敗（次回再試行）"; exit 0; fi
+          done
