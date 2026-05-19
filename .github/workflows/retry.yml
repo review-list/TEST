@@ -22,20 +22,26 @@ jobs:
           fingerprint=${{ secrets.OCI_FINGERPRINT }}
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
           region=ap-tokyo-1
-          key_file=~/.oci/key.pem
+          key_file=/home/runner/.oci/key.pem
           EOF
 
       - name: Apply stack
         run: |
           JOB=$(oci resource-manager job create-apply-job \
             --stack-id ${{ secrets.OCI_STACK_ID }} \
-            --execution-plan-strategy AUTO_APPROVED 2>/dev/null)
-          JOB_ID=$(echo $JOB | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['id'])")
+            --execution-plan-strategy AUTO_APPROVED 2>&1) || true
+          JOB_ID=$(echo "$JOB" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null) || true
+          if [ -z "$JOB_ID" ]; then
+            echo "ジョブ作成失敗。次回スケジュールで再試行。"
+            exit 0
+          fi
           echo "Job ID: $JOB_ID"
           for i in $(seq 1 10); do
             sleep 20
-            STATUS=$(oci resource-manager job get --job-id $JOB_ID 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['lifecycle-state'])")
+            STATUS=$(oci resource-manager job get --job-id $JOB_ID 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['lifecycle-state'])") || true
             echo "Status: $STATUS"
             if [ "$STATUS" = "SUCCEEDED" ]; then echo "成功！"; exit 0; fi
-            if [ "$STATUS" = "FAILED" ]; then echo "失敗（次回再試行）"; exit 0; fi
+            if [ "$STATUS" = "FAILED" ]; then echo "失敗（容量不足）。次回再試行。"; exit 0; fi
           done
+          echo "タイムアウト。次回再試行。"
+          exit 0
